@@ -48,6 +48,8 @@ def load_config():
         "camera_cleanup_retries": 2,
         "camera_cleanup_delay": 1,
         "camera_cleanup_required": True,
+        "camera_cleanup_use_sudo": True,
+        "camera_cleanup_extra_cmd": "",
         "rosnode_list_cmd": "source /opt/ros/noetic/setup.bash && rosnode list",
         "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
         "topic_echo_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic echo -n 1 {topic}",
@@ -723,12 +725,15 @@ def cleanup_camera():
     retries = int(CONFIG.get("camera_cleanup_retries", 1) or 1)
     delay = float(CONFIG.get("camera_cleanup_delay", 0) or 0)
     required = bool(CONFIG.get("camera_cleanup_required", False))
+    use_sudo = bool(CONFIG.get("camera_cleanup_use_sudo", False))
+    extra_cmd = CONFIG.get("camera_cleanup_extra_cmd") or ""
 
     killed_nodes = []
     killed_patterns = []
     remaining_nodes = []
     remaining_procs = {}
     last_error = None
+    sudo_prefix = "sudo -n " if use_sudo else ""
 
     for attempt in range(retries):
         if pre_cmd:
@@ -748,8 +753,18 @@ def cleanup_camera():
 
         for pattern in patterns:
             try:
-                subprocess.run(["bash", "-lc", f"pkill -f {shlex.quote(pattern)}"], check=False)
+                subprocess.run(
+                    ["bash", "-lc", f"{sudo_prefix}pkill -f {shlex.quote(pattern)}"],
+                    check=False,
+                )
                 killed_patterns.append(pattern)
+            except Exception as exc:
+                last_error = str(exc)
+
+        if extra_cmd:
+            try:
+                subprocess.run(["bash", "-lc", f"{sudo_prefix}{extra_cmd}"], check=False)
+                add_stack_log_line("[info] camera_cleanup_extra_cmd executed")
             except Exception as exc:
                 last_error = str(exc)
 

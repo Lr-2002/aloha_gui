@@ -15,6 +15,7 @@ const stackListEl = document.getElementById("stack-list");
 const topicMsgEl = document.getElementById("topic-msg");
 const stackLogOutputEl = document.getElementById("stack-log-output");
 const cleanupStatusEl = document.getElementById("cleanup-status");
+const masterStatusEl = document.getElementById("master-status");
 
 const userInput = document.getElementById("user-id");
 const taskInput = document.getElementById("task-name");
@@ -152,6 +153,18 @@ function updateUI(data) {
     }
   } else {
     cleanupStatusEl.textContent = "-";
+  }
+
+  const master = data.master_status || {};
+  if (master.last_check) {
+    const missingData = master.missing_data || [];
+    if (missingData.length) {
+      masterStatusEl.textContent = `no data: ${missingData.join(", ")}`;
+    } else {
+      masterStatusEl.textContent = "ok";
+    }
+  } else {
+    masterStatusEl.textContent = "-";
   }
 }
 
