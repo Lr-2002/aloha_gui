@@ -13,6 +13,9 @@
   "camera_launch_cmd": "cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch astra_camera multi_camera.launch",
   "camera_pre_cmd": "source /opt/ros/noetic/setup.bash && rosnode kill /camera_f/camera /camera_l/camera /camera_r/camera",
   "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
+  "topic_echo_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic echo -n 1 {topic}",
+  "topic_echo_timeout": 2,
+  "require_topic_messages": true,
   "roscore_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
   "required_topics": [
     "/master/joint_left",

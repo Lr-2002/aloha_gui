@@ -45,6 +45,9 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `topic_check_retries`
 - `topic_check_delay`
 - `camera_pre_cmd`
+- `topic_echo_cmd`
+- `topic_echo_timeout`
+- `require_topic_messages`
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 

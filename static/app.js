@@ -118,10 +118,16 @@ function updateUI(data) {
   if (topicStatus.last_check) {
     const missing = topicStatus.missing || [];
     const missingOptional = topicStatus.missing_optional || [];
+    const missingData = topicStatus.missing_data || [];
+    const missingOptionalData = topicStatus.missing_optional_data || [];
     if (missing.length) {
       topicMsgEl.textContent = `Missing required: ${missing.join(", ")}`;
+    } else if (missingData.length) {
+      topicMsgEl.textContent = `No data on: ${missingData.join(", ")}`;
     } else if (missingOptional.length) {
       topicMsgEl.textContent = `Missing optional: ${missingOptional.join(", ")}`;
+    } else if (missingOptionalData.length) {
+      topicMsgEl.textContent = `Optional no data: ${missingOptionalData.join(", ")}`;
     } else {
       topicMsgEl.textContent = "All required topics present.";
     }

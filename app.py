@@ -42,6 +42,9 @@ def load_config():
         "camera_launch_cmd": "",
         "camera_pre_cmd": "",
         "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
+        "topic_echo_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic echo -n 1 {topic}",
+        "topic_echo_timeout": 2,
+        "require_topic_messages": True,
         "roscore_check_cmd": "",
         "required_topics": [],
         "optional_topics": [],
@@ -113,6 +116,8 @@ STATE = {
         "present": [],
         "missing": [],
         "missing_optional": [],
+        "missing_data": [],
+        "missing_optional_data": [],
         "last_check": None,
         "error": None,
     },
@@ -400,12 +405,37 @@ def ensure_stack_running():
     return True, None
 
 
-def run_topic_check():
+def topic_has_data(topic, timeout):
+    cmd_tpl = CONFIG.get("topic_echo_cmd")
+    if not cmd_tpl:
+        return False, "topic_echo_not_configured"
+    cmd = cmd_tpl.format(topic=topic, timeout=timeout)
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout + 1,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return True, None
+        if result.returncode == 124:
+            return False, "timeout"
+        return False, result.stderr.strip() or "no_data"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def run_topic_check(with_data=None):
     cmd = CONFIG.get("topic_check_cmd")
     required = CONFIG.get("required_topics") or []
     optional = CONFIG.get("optional_topics") or []
     retries = int(CONFIG.get("topic_check_retries", 1) or 1)
     delay = float(CONFIG.get("topic_check_delay", 0) or 0)
+    if with_data is None:
+        with_data = bool(CONFIG.get("require_topic_messages", False))
     if not cmd:
         return {
             "required": required,
@@ -413,6 +443,8 @@ def run_topic_check():
             "present": [],
             "missing": required,
             "missing_optional": optional,
+            "missing_data": required if with_data else [],
+            "missing_optional_data": optional if with_data else [],
             "last_check": now_iso(),
             "error": "topic_check_not_configured",
         }
@@ -430,16 +462,34 @@ def run_topic_check():
             present = sorted(set(t for t in output if t.startswith("/")))
             missing = [t for t in required if t not in present]
             missing_optional = [t for t in optional if t not in present]
+            missing_data = []
+            missing_optional_data = []
+            if with_data and not missing:
+                timeout = int(CONFIG.get("topic_echo_timeout", 2) or 2)
+                for topic in required:
+                    if topic not in present:
+                        continue
+                    ok, _ = topic_has_data(topic, timeout)
+                    if not ok:
+                        missing_data.append(topic)
+                for topic in optional:
+                    if topic not in present:
+                        continue
+                    ok, _ = topic_has_data(topic, timeout)
+                    if not ok:
+                        missing_optional_data.append(topic)
             last_status = {
                 "required": required,
                 "optional": optional,
                 "present": present,
                 "missing": missing,
                 "missing_optional": missing_optional,
+                "missing_data": missing_data,
+                "missing_optional_data": missing_optional_data,
                 "last_check": now_iso(),
                 "error": None if result.returncode == 0 else result.stderr.strip(),
             }
-            if not missing:
+            if not missing and (not with_data or not missing_data):
                 return last_status
         except Exception as exc:
             last_status = {
@@ -448,6 +498,8 @@ def run_topic_check():
                 "present": [],
                 "missing": required,
                 "missing_optional": optional,
+                "missing_data": required if with_data else [],
+                "missing_optional_data": optional if with_data else [],
                 "last_check": now_iso(),
                 "error": str(exc),
             }
@@ -571,6 +623,8 @@ def api_episode_start():
             STATE["topic_status"] = status
         missing_required = status.get("missing") or []
         missing_optional = status.get("missing_optional") or []
+        missing_data = status.get("missing_data") or []
+        missing_optional_data = status.get("missing_optional_data") or []
         if missing_required:
             add_log_line(f"[error] topics_missing: {', '.join(missing_required)}")
             if missing_optional:
@@ -578,6 +632,13 @@ def api_episode_start():
                     f"[warn] topics_missing_optional: {', '.join(missing_optional)}"
                 )
             return jsonify({"ok": False, "error": "topics_missing"}), 400
+        if missing_data:
+            add_log_line(f"[error] topics_no_data: {', '.join(missing_data)}")
+            if missing_optional_data:
+                add_log_line(
+                    f"[warn] topics_no_data_optional: {', '.join(missing_optional_data)}"
+                )
+            return jsonify({"ok": False, "error": "topics_no_data"}), 400
     cmd = build_collect_command(
         session["dataset_dir"], session["task"], next_episode
     )
