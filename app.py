@@ -18,6 +18,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 APP_ROOT = Path(__file__).resolve().parent
+REGISTRY_DIR = APP_ROOT / "registry"
 
 
 def now_iso():
@@ -28,6 +29,165 @@ def expand_path(value):
     return str(Path(value).expanduser())
 
 
+REGISTRY_LOCK = threading.Lock()
+REGISTRY_DEFAULTS = {
+    "users": [],
+    "tasks": [],
+    "interfaces": [],
+    "episodes": [],
+}
+
+
+def ensure_registry_dir():
+    REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def registry_path(name):
+    return REGISTRY_DIR / f"{name}.json"
+
+
+def load_registry(name):
+    ensure_registry_dir()
+    path = registry_path(name)
+    if not path.exists():
+        write_registry(name, REGISTRY_DEFAULTS.get(name, []))
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def write_registry(name, data):
+    ensure_registry_dir()
+    path = registry_path(name)
+    tmp_path = path.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    tmp_path.replace(path)
+
+
+def generate_id(prefix, existing):
+    base = re.sub(r"[^a-z0-9]+", "-", prefix.lower()).strip("-")
+    if not base:
+        base = "id"
+    for _ in range(100):
+        suffix = f"{int(time.time())%100000}-{random.randint(100,999)}"
+        candidate = f"{base}-{suffix}"
+        if candidate not in existing:
+            return candidate
+    return f"{base}-{int(time.time())}"
+
+
+def registry_get_item(items, item_id):
+    for item in items:
+        if item.get("id") == item_id:
+            return item
+    return None
+
+
+def default_tasks():
+    return [
+        {
+            "id": "pick-and-place",
+            "name": "Pick and Place",
+            "description": "Pick a single object and place it in a target zone.",
+            "success_criteria": "Object ends inside target zone without drop.",
+        },
+        {
+            "id": "stack-blocks",
+            "name": "Stack Blocks",
+            "description": "Stack multiple blocks into a stable tower.",
+            "success_criteria": "All blocks stacked without collapse.",
+        },
+        {
+            "id": "insert-peg",
+            "name": "Insert Peg",
+            "description": "Insert a peg into a matching hole.",
+            "success_criteria": "Peg fully inserted and stable.",
+        },
+        {
+            "id": "plug-connector",
+            "name": "Plug Connector",
+            "description": "Align and plug a connector into a socket.",
+            "success_criteria": "Connector fully seated and aligned.",
+        },
+        {
+            "id": "open-drawer",
+            "name": "Open Drawer",
+            "description": "Pull a drawer open to a marked distance.",
+            "success_criteria": "Drawer opened to target distance.",
+        },
+        {
+            "id": "close-drawer",
+            "name": "Close Drawer",
+            "description": "Push a drawer closed until fully seated.",
+            "success_criteria": "Drawer fully closed.",
+        },
+        {
+            "id": "press-button",
+            "name": "Press Button",
+            "description": "Press a target button with correct force.",
+            "success_criteria": "Button actuated and released.",
+        },
+        {
+            "id": "flip-switch",
+            "name": "Flip Switch",
+            "description": "Toggle a switch from one state to another.",
+            "success_criteria": "Switch reaches target state.",
+        },
+        {
+            "id": "wipe-surface",
+            "name": "Wipe Surface",
+            "description": "Wipe a marked area using a tool or cloth.",
+            "success_criteria": "Coverage of target area achieved.",
+        },
+        {
+            "id": "pour-liquid",
+            "name": "Pour Liquid",
+            "description": "Pour from a source into a target container.",
+            "success_criteria": "Target reaches specified fill level without spill.",
+        },
+        {
+            "id": "pick-from-bin",
+            "name": "Pick From Bin",
+            "description": "Pick an object from a bin and place on table.",
+            "success_criteria": "Object removed from bin and placed correctly.",
+        },
+        {
+            "id": "align-place",
+            "name": "Align and Place",
+            "description": "Align an object with a fixture before placing.",
+            "success_criteria": "Object aligned within tolerance and placed.",
+        },
+    ]
+
+
+def default_interfaces():
+    return [
+        {
+            "id": "aloha",
+            "name": "Aloha",
+            "type": "aloha",
+            "description": "Aloha data collection interface.",
+        }
+    ]
+
+
+def seed_registry():
+    with REGISTRY_LOCK:
+        tasks = load_registry("tasks")
+        if not tasks:
+            write_registry("tasks", default_tasks())
+        interfaces = load_registry("interfaces")
+        if not interfaces:
+            write_registry("interfaces", default_interfaces())
+        users = load_registry("users")
+        if not isinstance(users, list):
+            write_registry("users", [])
+
+
 def load_config():
     cfg = {
         "data_root": "~/data",
@@ -36,7 +196,7 @@ def load_config():
         "collect_workdir": "",
         "collect_extra_args": [],
         "collect_shell_template": "",
-        "collect_max_timesteps": 500,
+        "collect_max_timesteps": -1,
         "replay_shell_template": "",
         "auto_start_stack": True,
         "require_sudo_password": False,
@@ -121,6 +281,7 @@ def load_config():
 
 
 CONFIG = load_config()
+seed_registry()
 
 DATA_ROOT = expand_path(CONFIG["data_root"])
 TAIL_LINES = int(CONFIG.get("tail_lines", 200))
@@ -193,6 +354,14 @@ def sanitize_token(value):
 
 def ensure_dir(path):
     Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def append_episode_log(data):
+    ensure_registry_dir()
+    path = REGISTRY_DIR / "episodes.jsonl"
+    with REGISTRY_LOCK:
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
 
 def set_sudo_password(value):
@@ -379,6 +548,17 @@ class EpisodeRunner:
                     "exit_code": proc.returncode,
                     "timestamp": now_iso(),
                 },
+            )
+            append_episode_log(
+                {
+                    "event": "end",
+                    "timestamp": now_iso(),
+                    "interface_id": STATE.get("session", {}).get("interface_id"),
+                    "task_id": STATE.get("session", {}).get("task_id"),
+                    "user_id": STATE.get("session", {}).get("user_id"),
+                    "episode_id": episode_idx,
+                    "exit_code": proc.returncode,
+                }
             )
             self.process = None
 
@@ -1015,6 +1195,133 @@ def api_status():
     return jsonify(data)
 
 
+@app.route("/api/interfaces", methods=["GET"])
+def api_interfaces():
+    interfaces = load_registry("interfaces")
+    return jsonify({"interfaces": interfaces})
+
+
+@app.route("/api/users", methods=["GET"])
+def api_users():
+    users = load_registry("users")
+    users_sorted = sorted(users, key=lambda x: x.get("name", ""))
+    return jsonify({"users": users_sorted})
+
+
+@app.route("/api/users", methods=["POST"])
+def api_users_add():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "invalid_name"}), 400
+    with REGISTRY_LOCK:
+        users = load_registry("users")
+        existing = next((u for u in users if u.get("name") == name), None)
+        if existing:
+            return jsonify({"ok": True, "user": existing})
+        user_id = generate_id(name, {u.get("id") for u in users})
+        user = {"id": user_id, "name": name}
+        users.append(user)
+        write_registry("users", users)
+    return jsonify({"ok": True, "user": user})
+
+
+@app.route("/api/users/import", methods=["POST"])
+def api_users_import():
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("items") or []
+    mode = (payload.get("mode") or "merge").lower()
+    if not isinstance(items, list):
+        return jsonify({"ok": False, "error": "invalid_items"}), 400
+    with REGISTRY_LOCK:
+        users = [] if mode == "replace" else load_registry("users")
+        existing_ids = {u.get("id") for u in users}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            user_id = item.get("id") or generate_id(name, existing_ids)
+            existing_ids.add(user_id)
+            record = {"id": user_id, "name": name}
+            for key, value in item.items():
+                if key not in record:
+                    record[key] = value
+            existing = registry_get_item(users, user_id)
+            if existing:
+                existing.update(record)
+            else:
+                users.append(record)
+        write_registry("users", users)
+    return jsonify({"ok": True, "count": len(users)})
+
+
+@app.route("/api/tasks", methods=["GET"])
+def api_tasks():
+    tasks = load_registry("tasks")
+    tasks_sorted = sorted(tasks, key=lambda x: x.get("name", ""))
+    return jsonify({"tasks": tasks_sorted})
+
+
+@app.route("/api/tasks", methods=["POST"])
+def api_tasks_add():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "invalid_name"}), 400
+    description = (payload.get("description") or "").strip()
+    success = (payload.get("success_criteria") or "").strip()
+    with REGISTRY_LOCK:
+        tasks = load_registry("tasks")
+        existing = next((t for t in tasks if t.get("name") == name), None)
+        if existing:
+            return jsonify({"ok": True, "task": existing})
+        task_id = generate_id(name, {t.get("id") for t in tasks})
+        task = {
+            "id": task_id,
+            "name": name,
+            "description": description,
+            "success_criteria": success,
+        }
+        tasks.append(task)
+        write_registry("tasks", tasks)
+    return jsonify({"ok": True, "task": task})
+
+
+@app.route("/api/tasks/import", methods=["POST"])
+def api_tasks_import():
+    payload = request.get_json(silent=True) or {}
+    items = payload.get("items") or []
+    mode = (payload.get("mode") or "merge").lower()
+    if not isinstance(items, list):
+        return jsonify({"ok": False, "error": "invalid_items"}), 400
+    with REGISTRY_LOCK:
+        tasks = [] if mode == "replace" else load_registry("tasks")
+        existing_ids = {t.get("id") for t in tasks}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            task_id = item.get("id") or generate_id(name, existing_ids)
+            existing_ids.add(task_id)
+            record = {
+                "id": task_id,
+                "name": name,
+                "description": item.get("description", ""),
+                "success_criteria": item.get("success_criteria", ""),
+            }
+            existing = registry_get_item(tasks, task_id)
+            if existing:
+                existing.update(record)
+            else:
+                tasks.append(record)
+        write_registry("tasks", tasks)
+    return jsonify({"ok": True, "count": len(tasks)})
+
+
 @app.route("/api/sudo", methods=["POST"])
 def api_sudo():
     payload = request.get_json(silent=True) or {}
@@ -1030,19 +1337,66 @@ def api_sudo():
 @app.route("/api/session/start", methods=["POST"])
 def api_session_start():
     payload = request.get_json(silent=True) or {}
-    user_id = sanitize_token(payload.get("user"))
-    task_name = sanitize_token(payload.get("task"))
-    if not user_id or not task_name:
+    interface_id = sanitize_token(payload.get("interface_id")) or "aloha"
+    user_id = sanitize_token(payload.get("user_id"))
+    task_id = sanitize_token(payload.get("task_id"))
+
+    users = load_registry("users")
+    tasks = load_registry("tasks")
+    interfaces = load_registry("interfaces")
+    interface = registry_get_item(interfaces, interface_id)
+    if not interface:
+        return jsonify({"ok": False, "error": "invalid_interface"}), 400
+
+    if not user_id:
+        user_name = (payload.get("user") or "").strip()
+        if not user_name:
+            return jsonify({"ok": False, "error": "invalid_user"}), 400
+        existing = next((u for u in users if u.get("name") == user_name), None)
+        if existing:
+            user_id = existing.get("id")
+        else:
+            user_id = generate_id(user_name, {u.get("id") for u in users})
+            users.append({"id": user_id, "name": user_name})
+            write_registry("users", users)
+
+    if not task_id:
+        task_name = (payload.get("task") or "").strip()
+        if not task_name:
+            return jsonify({"ok": False, "error": "invalid_task"}), 400
+        existing = next((t for t in tasks if t.get("name") == task_name), None)
+        if existing:
+            task_id = existing.get("id")
+        else:
+            task_id = generate_id(task_name, {t.get("id") for t in tasks})
+            tasks.append(
+                {
+                    "id": task_id,
+                    "name": task_name,
+                    "description": payload.get("task_description", ""),
+                    "success_criteria": payload.get("task_success", ""),
+                }
+            )
+            write_registry("tasks", tasks)
+
+    user = registry_get_item(users, user_id)
+    task = registry_get_item(tasks, task_id)
+    if not user or not task:
         return jsonify({"ok": False, "error": "invalid_user_or_task"}), 400
-    dataset_dir, meta_dir, logs_dir = session_paths(user_id, task_name)
+
+    dataset_dir, meta_dir, logs_dir = session_paths(user_id, task_id)
     ensure_dir(dataset_dir)
     ensure_dir(meta_dir)
     ensure_dir(logs_dir)
     episodes = scan_episode_indices(dataset_dir)
     next_episode = (episodes[-1] + 1) if episodes else 0
     session = {
-        "user": user_id,
-        "task": task_name,
+        "interface_id": interface_id,
+        "interface_name": interface.get("name"),
+        "user_id": user_id,
+        "user_name": user.get("name"),
+        "task_id": task_id,
+        "task_name": task.get("name"),
         "dataset_dir": str(dataset_dir),
         "created_at": now_iso(),
     }
@@ -1119,13 +1473,14 @@ def api_episode_start():
                     return jsonify({"ok": False, "error": "master_no_data"}), 400
         else:
             add_log_line("[info] topic_check_skipped")
+    dataset_dir = Path(session["dataset_dir"])
+    dataset_root = dataset_dir.parent
     cmd = build_collect_command(
-        session["dataset_dir"], session["task"], next_episode
+        dataset_root, session["task_id"], next_episode
     )
     if not cmd:
         add_log_line("[error] collect_not_configured")
         return jsonify({"ok": False, "error": "collect_not_configured"}), 400
-    dataset_dir = Path(session["dataset_dir"])
     meta_dir = dataset_dir / ".meta"
     log_path = meta_dir / "logs" / f"episode_{next_episode}.log"
     workdir = CONFIG.get("collect_workdir") or None
@@ -1144,6 +1499,18 @@ def api_episode_start():
     append_event(
         meta_dir,
         {"episode": next_episode, "event": "start", "timestamp": now_iso()},
+    )
+    append_episode_log(
+        {
+            "event": "start",
+            "timestamp": now_iso(),
+            "interface_id": session.get("interface_id"),
+            "task_id": session.get("task_id"),
+            "user_id": session.get("user_id"),
+            "episode_id": next_episode,
+            "storage_path": str(dataset_dir),
+            "storage_name": f"episode_{next_episode}",
+        }
     )
     try:
         RUNNER.start(cmd, workdir, log_path, meta_dir, dataset_dir, next_episode)
@@ -1176,6 +1543,21 @@ def api_episode_start():
 
 @app.route("/api/episode/stop", methods=["POST"])
 def api_episode_stop():
+    with STATE_LOCK:
+        session = STATE.get("session")
+        current_episode = STATE.get("current_episode")
+        running = STATE.get("running")
+    if session and running and current_episode is not None:
+        append_episode_log(
+            {
+                "event": "stop_requested",
+                "timestamp": now_iso(),
+                "interface_id": session.get("interface_id"),
+                "task_id": session.get("task_id"),
+                "user_id": session.get("user_id"),
+                "episode_id": current_episode,
+            }
+        )
     stopped = RUNNER.stop()
     if not stopped:
         with STATE_LOCK:

@@ -19,8 +19,14 @@ const masterStatusEl = document.getElementById("master-status");
 const sudoStatusEl = document.getElementById("sudo-status");
 const sudoMsgEl = document.getElementById("sudo-msg");
 
-const userInput = document.getElementById("user-id");
-const taskInput = document.getElementById("task-name");
+const interfaceSelect = document.getElementById("interface-id");
+const userSelect = document.getElementById("user-id");
+const taskSelect = document.getElementById("task-id");
+const userNameInput = document.getElementById("user-name");
+const taskNameInput = document.getElementById("task-name");
+const taskDescInput = document.getElementById("task-desc");
+const taskSuccessInput = document.getElementById("task-success");
+const taskDetailsEl = document.getElementById("task-details");
 const sudoInput = document.getElementById("sudo-password");
 
 const startSessionBtn = document.getElementById("start-session");
@@ -36,8 +42,16 @@ const copyLiveLogBtn = document.getElementById("copy-live-log");
 const copyStackLogBtn = document.getElementById("copy-stack-log");
 const setSudoBtn = document.getElementById("set-sudo");
 const clearSudoBtn = document.getElementById("clear-sudo");
+const addUserBtn = document.getElementById("add-user");
+const addTaskBtn = document.getElementById("add-task");
+const importTasksBtn = document.getElementById("import-tasks-btn");
+const importUsersBtn = document.getElementById("import-users-btn");
+const importTasksArea = document.getElementById("import-tasks");
+const importUsersArea = document.getElementById("import-users");
+const registryMsgEl = document.getElementById("registry-msg");
 
 let lastStatus = null;
+let lastTasks = [];
 
 async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
@@ -50,6 +64,41 @@ async function apiRequest(path, options = {}) {
     throw new Error(error);
   }
   return data;
+}
+
+function populateSelect(selectEl, items, placeholder) {
+  selectEl.innerHTML = "";
+  if (placeholder) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = placeholder;
+    selectEl.appendChild(opt);
+  }
+  items.forEach((item) => {
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = item.name || item.id;
+    selectEl.appendChild(opt);
+  });
+}
+
+async function loadRegistry() {
+  try {
+    const [interfaces, users, tasks] = await Promise.all([
+      apiRequest("/api/interfaces"),
+      apiRequest("/api/users"),
+      apiRequest("/api/tasks"),
+    ]);
+    populateSelect(interfaceSelect, interfaces.interfaces || [], "Select interface");
+    populateSelect(userSelect, users.users || [], "Select user");
+    lastTasks = tasks.tasks || [];
+    populateSelect(taskSelect, lastTasks, "Select task");
+    if (!interfaceSelect.value && (interfaces.interfaces || []).length) {
+      interfaceSelect.value = interfaces.interfaces[0].id;
+    }
+  } catch (err) {
+    registryMsgEl.textContent = `Registry load error: ${err.message}`;
+  }
 }
 
 function setStatusText(text, mode) {
@@ -75,6 +124,17 @@ function updateUI(data) {
   } else {
     sessionPathEl.textContent = "Session path: -";
     currentEpisodeEl.textContent = "-";
+  }
+
+  if (taskSelect && lastTasks.length) {
+    const selected = lastTasks.find((t) => t.id === taskSelect.value);
+    if (selected) {
+      taskDetailsEl.textContent = `${selected.description || "No description"} | ${
+        selected.success_criteria || "No success criteria"
+      }`;
+    } else {
+      taskDetailsEl.textContent = "Select a task to see details.";
+    }
   }
 
   collectorStateEl.textContent = data.collect_configured ? "configured" : "not configured";
@@ -218,21 +278,94 @@ async function refreshStatus() {
 }
 
 startSessionBtn.addEventListener("click", async () => {
-  const user = userInput.value.trim();
-  const task = taskInput.value.trim();
-  if (!user || !task) {
-    episodeMsgEl.textContent = "User ID and Task Name are required.";
+  const interfaceId = interfaceSelect.value;
+  const userId = userSelect.value;
+  const taskId = taskSelect.value;
+  if (!interfaceId || !userId || !taskId) {
+    episodeMsgEl.textContent = "Interface, user, and task are required.";
     return;
   }
   try {
     await apiRequest("/api/session/start", {
       method: "POST",
-      body: JSON.stringify({ user, task }),
+      body: JSON.stringify({ interface_id: interfaceId, user_id: userId, task_id: taskId }),
     });
     await refreshStatus();
     episodeMsgEl.textContent = "Session started.";
   } catch (err) {
     episodeMsgEl.textContent = `Session error: ${err.message}`;
+  }
+});
+
+addUserBtn.addEventListener("click", async () => {
+  const name = userNameInput.value.trim();
+  if (!name) {
+    registryMsgEl.textContent = "User name is required.";
+    return;
+  }
+  try {
+    await apiRequest("/api/users", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    userNameInput.value = "";
+    await loadRegistry();
+    registryMsgEl.textContent = "User added.";
+  } catch (err) {
+    registryMsgEl.textContent = `User add error: ${err.message}`;
+  }
+});
+
+addTaskBtn.addEventListener("click", async () => {
+  const name = taskNameInput.value.trim();
+  if (!name) {
+    registryMsgEl.textContent = "Task name is required.";
+    return;
+  }
+  try {
+    await apiRequest("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        description: taskDescInput.value.trim(),
+        success_criteria: taskSuccessInput.value.trim(),
+      }),
+    });
+    taskNameInput.value = "";
+    taskDescInput.value = "";
+    taskSuccessInput.value = "";
+    await loadRegistry();
+    registryMsgEl.textContent = "Task added.";
+  } catch (err) {
+    registryMsgEl.textContent = `Task add error: ${err.message}`;
+  }
+});
+
+importTasksBtn.addEventListener("click", async () => {
+  try {
+    const items = JSON.parse(importTasksArea.value || "[]");
+    await apiRequest("/api/tasks/import", {
+      method: "POST",
+      body: JSON.stringify({ items, mode: "merge" }),
+    });
+    await loadRegistry();
+    registryMsgEl.textContent = "Tasks imported.";
+  } catch (err) {
+    registryMsgEl.textContent = `Task import error: ${err.message}`;
+  }
+});
+
+importUsersBtn.addEventListener("click", async () => {
+  try {
+    const items = JSON.parse(importUsersArea.value || "[]");
+    await apiRequest("/api/users/import", {
+      method: "POST",
+      body: JSON.stringify({ items, mode: "merge" }),
+    });
+    await loadRegistry();
+    registryMsgEl.textContent = "Users imported.";
+  } catch (err) {
+    registryMsgEl.textContent = `User import error: ${err.message}`;
   }
 });
 
@@ -370,5 +503,7 @@ copyStackLogBtn.addEventListener("click", async () => {
   }
 });
 
-refreshStatus();
+taskSelect.addEventListener("change", () => updateUI(lastStatus || {}));
+
+loadRegistry().then(refreshStatus);
 setInterval(refreshStatus, 2500);

@@ -76,6 +76,17 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `camera_cleanup_use_sudo`
 - `camera_cleanup_extra_cmd`
 - `rosnode_list_cmd`
+- `collect_max_timesteps`: max steps per episode (`-1` for no limit)
+
+## Registry
+
+The UI manages three registries stored under `registry/`:
+
+- `users.json`
+- `tasks.json`
+- `interfaces.json`
+
+You can add users/tasks in the UI or import JSON arrays.
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 

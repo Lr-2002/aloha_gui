@@ -45,13 +45,28 @@
           <h2>Session Setup</h2>
           <p class="muted">Define the operator and task name before starting episodes.</p>
           <div class="field">
-            <label for="user-id">User ID</label>
-            <input id="user-id" type="text" placeholder="wxh" />
+            <label for="interface-id">Interface</label>
+            <select id="interface-id"></select>
           </div>
           <div class="field">
-            <label for="task-name">Task Name</label>
-            <input id="task-name" type="text" placeholder="pick_and_place" />
+            <label for="user-id">User</label>
+            <select id="user-id"></select>
           </div>
+          <div class="inline-form">
+            <input id="user-name" type="text" placeholder="New user name" />
+            <button id="add-user" class="ghost small">Add User</button>
+          </div>
+          <div class="field">
+            <label for="task-id">Task</label>
+            <select id="task-id"></select>
+          </div>
+          <div class="inline-form">
+            <input id="task-name" type="text" placeholder="Task name" />
+            <input id="task-desc" type="text" placeholder="Task description" />
+            <input id="task-success" type="text" placeholder="Success criteria" />
+            <button id="add-task" class="ghost small">Add Task</button>
+          </div>
+          <p class="hint" id="task-details">Select a task to see details.</p>
           <button id="start-session" class="primary">Start Session</button>
           <p class="hint" id="session-path">Session path: -</p>
         </section>
@@ -152,6 +167,22 @@
           </div>
           <p class="muted">Latest ROS/launch output (tail).</p>
           <pre id="stack-log-output">No output yet.</pre>
+        </section>
+
+        <section class="card">
+          <h2>Registry Import</h2>
+          <p class="muted">Paste JSON arrays to import tasks or users.</p>
+          <div class="field">
+            <label for="import-tasks">Tasks JSON</label>
+            <textarea id="import-tasks" rows="4" placeholder='[{"name":"Pick and Place","description":"...","success_criteria":"..."}]'></textarea>
+            <button id="import-tasks-btn" class="ghost small">Import Tasks</button>
+          </div>
+          <div class="field">
+            <label for="import-users">Users JSON</label>
+            <textarea id="import-users" rows="4" placeholder='[{"name":"Alice"},{"name":"Bob"}]'></textarea>
+            <button id="import-users-btn" class="ghost small">Import Users</button>
+          </div>
+          <p class="hint" id="registry-msg">-</p>
         </section>
       </main>
     </div>
