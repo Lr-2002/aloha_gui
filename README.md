@@ -55,6 +55,12 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `auto_restart_master`
 - `master_restart_retries`
 - `master_restart_delay`
+- `camera_cleanup_nodes`
+- `camera_cleanup_process_patterns`
+- `camera_cleanup_retries`
+- `camera_cleanup_delay`
+- `camera_cleanup_required`
+- `rosnode_list_cmd`
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 

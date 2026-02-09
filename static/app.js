@@ -14,6 +14,7 @@ const stackStateEl = document.getElementById("stack-state");
 const stackListEl = document.getElementById("stack-list");
 const topicMsgEl = document.getElementById("topic-msg");
 const stackLogOutputEl = document.getElementById("stack-log-output");
+const cleanupStatusEl = document.getElementById("cleanup-status");
 
 const userInput = document.getElementById("user-id");
 const taskInput = document.getElementById("task-name");
@@ -139,6 +140,19 @@ function updateUI(data) {
   stackLogOutputEl.textContent = stackLogLines.length
     ? stackLogLines.join("\n")
     : "No output yet.";
+
+  const cleanup = data.camera_cleanup_status || {};
+  if (cleanup.last_run) {
+    if (cleanup.remaining_nodes && cleanup.remaining_nodes.length) {
+      cleanupStatusEl.textContent = `remaining nodes: ${cleanup.remaining_nodes.join(", ")}`;
+    } else if (cleanup.remaining_processes && Object.keys(cleanup.remaining_processes).length) {
+      cleanupStatusEl.textContent = "remaining procs";
+    } else {
+      cleanupStatusEl.textContent = "ok";
+    }
+  } else {
+    cleanupStatusEl.textContent = "-";
+  }
 }
 
 async function copyText(text) {

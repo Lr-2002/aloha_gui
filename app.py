@@ -6,6 +6,7 @@ import random
 import re
 import signal
 import shutil
+import shlex
 import subprocess
 import threading
 import time
@@ -42,6 +43,12 @@ def load_config():
         "arm_launch_cmd": "",
         "camera_launch_cmd": "",
         "camera_pre_cmd": "",
+        "camera_cleanup_nodes": ["/camera_f/camera", "/camera_l/camera", "/camera_r/camera"],
+        "camera_cleanup_process_patterns": ["astra_camera", "ob_camera", "multi_camera"],
+        "camera_cleanup_retries": 2,
+        "camera_cleanup_delay": 1,
+        "camera_cleanup_required": True,
+        "rosnode_list_cmd": "source /opt/ros/noetic/setup.bash && rosnode list",
         "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
         "topic_echo_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic echo -n 1 {topic}",
         "topic_echo_timeout": 2,
@@ -134,6 +141,14 @@ STATE = {
         "missing": [],
         "missing_data": [],
         "last_check": None,
+        "error": None,
+    },
+    "camera_cleanup_status": {
+        "killed_nodes": [],
+        "killed_processes": [],
+        "remaining_nodes": [],
+        "remaining_processes": {},
+        "last_run": None,
         "error": None,
     },
 }
@@ -415,13 +430,9 @@ def ensure_stack_running():
     _start_named("arm")
     if delay > 0:
         time.sleep(delay)
-    pre_cmd = CONFIG.get("camera_pre_cmd")
-    if pre_cmd:
-        try:
-            subprocess.run(["bash", "-lc", pre_cmd], check=False)
-            add_stack_log_line("[info] camera_pre_cmd executed")
-        except Exception as exc:
-            add_stack_log_line(f"[warn] camera_pre_cmd failed: {exc}")
+    if not cleanup_camera():
+        add_stack_log_line("[error] camera_cleanup_failed")
+        return False, "camera_cleanup_failed"
     _start_named("camera")
     with STATE_LOCK:
         STATE["stack_running"] = any(
@@ -669,6 +680,119 @@ def roscore_is_running():
     except Exception:
         return False
 
+
+def list_rosnodes():
+    cmd = CONFIG.get("rosnode_list_cmd")
+    if not cmd:
+        return []
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        return [line.strip() for line in result.stdout.splitlines() if line.strip().startswith("/")]
+    except Exception:
+        return []
+
+
+def list_pids(pattern):
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", f"pgrep -f {shlex.quote(pattern)}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode == 0:
+            return [pid for pid in result.stdout.split() if pid.isdigit()]
+        return []
+    except Exception:
+        return []
+
+
+def cleanup_camera():
+    pre_cmd = CONFIG.get("camera_pre_cmd")
+    nodes = CONFIG.get("camera_cleanup_nodes") or []
+    patterns = CONFIG.get("camera_cleanup_process_patterns") or []
+    retries = int(CONFIG.get("camera_cleanup_retries", 1) or 1)
+    delay = float(CONFIG.get("camera_cleanup_delay", 0) or 0)
+    required = bool(CONFIG.get("camera_cleanup_required", False))
+
+    killed_nodes = []
+    killed_patterns = []
+    remaining_nodes = []
+    remaining_procs = {}
+    last_error = None
+
+    for attempt in range(retries):
+        if pre_cmd:
+            try:
+                subprocess.run(["bash", "-lc", pre_cmd], check=False)
+                add_stack_log_line("[info] camera_pre_cmd executed")
+            except Exception as exc:
+                last_error = str(exc)
+                add_stack_log_line(f"[warn] camera_pre_cmd failed: {exc}")
+
+        current_nodes = list_rosnodes()
+        to_kill = [n for n in current_nodes if n in nodes]
+        if to_kill:
+            if kill_nodes(to_kill):
+                killed_nodes = to_kill
+                add_stack_log_line(f"[info] killed camera nodes: {', '.join(to_kill)}")
+
+        for pattern in patterns:
+            try:
+                subprocess.run(["bash", "-lc", f"pkill -f {shlex.quote(pattern)}"], check=False)
+                killed_patterns.append(pattern)
+            except Exception as exc:
+                last_error = str(exc)
+
+        if delay > 0:
+            time.sleep(delay)
+
+        current_nodes = list_rosnodes()
+        remaining_nodes = [
+            n
+            for n in current_nodes
+            if n in nodes or n.startswith("/camera_") or n.startswith("/camera/")
+        ]
+        remaining_procs = {}
+        for pattern in patterns:
+            pids = list_pids(pattern)
+            if pids:
+                remaining_procs[pattern] = pids
+
+        if not remaining_nodes and not remaining_procs:
+            break
+
+    status = {
+        "killed_nodes": killed_nodes,
+        "killed_processes": killed_patterns,
+        "remaining_nodes": remaining_nodes,
+        "remaining_processes": remaining_procs,
+        "last_run": now_iso(),
+        "error": last_error,
+    }
+    with STATE_LOCK:
+        STATE["camera_cleanup_status"] = status
+
+    if remaining_nodes or remaining_procs:
+        add_stack_log_line(
+            f"[warn] camera cleanup remaining nodes: {', '.join(remaining_nodes) if remaining_nodes else '-'}"
+        )
+        if remaining_procs:
+            add_stack_log_line(f"[warn] camera cleanup remaining procs: {remaining_procs}")
+        return not required
+
+    add_stack_log_line("[info] camera cleanup ok")
+    return True
+
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 
@@ -705,6 +829,7 @@ def api_status():
             "stack_log": list(STATE["stack_log"]),
             "topic_status": STATE["topic_status"],
             "master_status": STATE["master_status"],
+            "camera_cleanup_status": STATE["camera_cleanup_status"],
         }
     data["data_root"] = DATA_ROOT
     data["collect_configured"] = bool(
