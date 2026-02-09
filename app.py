@@ -42,6 +42,9 @@ def load_config():
         "stack_workdir": "",
         "stack_clean_env": False,
         "stack_env_path": "",
+        "stack_pythonpath": "",
+        "stack_pythonpath_auto": False,
+        "stack_pythonpath_auto_paths": [],
         "roscore_cmd": "",
         "arm_dep_check_cmd": "",
         "arm_dep_check_required": False,
@@ -214,6 +217,33 @@ def build_env(clean=False):
     sudo_pw = get_sudo_password()
     if sudo_pw:
         env["SUDO_PASSWORD"] = sudo_pw
+    return env
+
+
+def build_stack_env():
+    env = build_env(clean=bool(CONFIG.get("stack_clean_env", False)))
+    pythonpaths = []
+    explicit = CONFIG.get("stack_pythonpath") or ""
+    if explicit:
+        for part in explicit.split(":"):
+            part = part.strip()
+            if not part:
+                continue
+            path = expand_path(part)
+            if Path(path).exists():
+                pythonpaths.append(path)
+    auto_enabled = bool(CONFIG.get("stack_pythonpath_auto", False))
+    if auto_enabled and not pythonpaths:
+        for item in CONFIG.get("stack_pythonpath_auto_paths", []) or []:
+            if not item:
+                continue
+            path = expand_path(item)
+            if Path(path).exists():
+                pythonpaths.append(path)
+    if pythonpaths:
+        current = env.get("PYTHONPATH", "")
+        combined = ":".join(pythonpaths + ([current] if current else []))
+        env["PYTHONPATH"] = combined
     return env
 
 
@@ -457,7 +487,7 @@ def ensure_stack_running():
     logs_dir = stack_logs_dir(session)
     ensure_dir(logs_dir)
     delay = float(CONFIG.get("stack_start_delay", 0) or 0)
-    stack_env = build_env(clean=bool(CONFIG.get("stack_clean_env", False)))
+    stack_env = build_stack_env()
     require_sudo = bool(CONFIG.get("require_sudo_password", False))
     if require_sudo and not get_sudo_password():
         add_stack_log_line("[error] sudo_password_missing")
@@ -833,7 +863,7 @@ def cleanup_camera():
     last_error = None
     sudo_prefix = ""
     sudo_input = None
-    base_env = build_env(clean=bool(CONFIG.get("stack_clean_env", False)))
+    base_env = build_stack_env()
     if use_sudo:
         if get_sudo_password():
             sudo_prefix = "sudo -S "
