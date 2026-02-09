@@ -16,9 +16,12 @@ const topicMsgEl = document.getElementById("topic-msg");
 const stackLogOutputEl = document.getElementById("stack-log-output");
 const cleanupStatusEl = document.getElementById("cleanup-status");
 const masterStatusEl = document.getElementById("master-status");
+const sudoStatusEl = document.getElementById("sudo-status");
+const sudoMsgEl = document.getElementById("sudo-msg");
 
 const userInput = document.getElementById("user-id");
 const taskInput = document.getElementById("task-name");
+const sudoInput = document.getElementById("sudo-password");
 
 const startSessionBtn = document.getElementById("start-session");
 const startEpisodeBtn = document.getElementById("start-episode");
@@ -31,6 +34,8 @@ const stopStackBtn = document.getElementById("stop-stack");
 const checkTopicsBtn = document.getElementById("check-topics");
 const copyLiveLogBtn = document.getElementById("copy-live-log");
 const copyStackLogBtn = document.getElementById("copy-stack-log");
+const setSudoBtn = document.getElementById("set-sudo");
+const clearSudoBtn = document.getElementById("clear-sudo");
 
 let lastStatus = null;
 
@@ -166,6 +171,14 @@ function updateUI(data) {
   } else {
     masterStatusEl.textContent = "-";
   }
+
+  if (data.sudo_ready) {
+    sudoStatusEl.textContent = "set";
+    sudoMsgEl.textContent = "Sudo password stored in memory.";
+  } else {
+    sudoStatusEl.textContent = "not set";
+    sudoMsgEl.textContent = "Sudo password not set.";
+  }
 }
 
 async function copyText(text) {
@@ -220,6 +233,38 @@ startSessionBtn.addEventListener("click", async () => {
     episodeMsgEl.textContent = "Session started.";
   } catch (err) {
     episodeMsgEl.textContent = `Session error: ${err.message}`;
+  }
+});
+
+setSudoBtn.addEventListener("click", async () => {
+  const password = sudoInput.value;
+  if (!password) {
+    sudoMsgEl.textContent = "Enter sudo password first.";
+    return;
+  }
+  try {
+    await apiRequest("/api/sudo", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    });
+    sudoInput.value = "";
+    await refreshStatus();
+    sudoMsgEl.textContent = "Sudo password set.";
+  } catch (err) {
+    sudoMsgEl.textContent = `Sudo error: ${err.message}`;
+  }
+});
+
+clearSudoBtn.addEventListener("click", async () => {
+  try {
+    await apiRequest("/api/sudo", {
+      method: "POST",
+      body: JSON.stringify({ password: "" }),
+    });
+    await refreshStatus();
+    sudoMsgEl.textContent = "Sudo password cleared.";
+  } catch (err) {
+    sudoMsgEl.textContent = `Sudo error: ${err.message}`;
   }
 });
 

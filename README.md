@@ -36,8 +36,10 @@ Example shell template matching the default AgileX image paths (conda + ROS):
 System stack (auto-start ROS + arm + camera) is configurable via:
 
 - `roscore_cmd`
+- `arm_pre_cmd`
 - `arm_launch_cmd`
 - `camera_launch_cmd`
+- `require_sudo_password`
 - `topic_check_cmd`
 - `required_topics`
 - `optional_topics`
@@ -66,9 +68,10 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 
-Default `arm_launch_cmd` and `camera_launch_cmd` in `config.example.json` match the doc:
+Default `arm_pre_cmd`, `arm_launch_cmd` and `camera_launch_cmd` in `config.example.json` match the doc:
 
-- Arm: `bash can_config.sh` + `roslaunch piper start_ms_piper.launch mode:=0 auto_enable:=false`
+- Arm pre: `sudo bash can_config.sh`
+- Arm: `roslaunch piper start_ms_piper.launch mode:=0 auto_enable:=false`
 - Camera: `roslaunch astra_camera multi_camera.launch`
 
 If you use RealSense, replace `camera_launch_cmd` with:
@@ -78,6 +81,8 @@ source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/camera_ws && source devel/
 ```
 
 `optional_topics` contains depth/camera-info/base topics from the doc. Move them into `required_topics` if you want to block capture when they are missing.
+
+If `require_sudo_password` is true, set the password in the UI before starting the stack. It is stored in memory only and not written to disk.
 
 If master topics have no data, the server can kill the master publishers and restart the arm launch (see `master_topics` and `auto_restart_master`).
 

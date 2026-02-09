@@ -38,8 +38,10 @@ def load_config():
         "collect_shell_template": "",
         "replay_shell_template": "",
         "auto_start_stack": True,
+        "require_sudo_password": False,
         "stack_workdir": "",
         "roscore_cmd": "",
+        "arm_pre_cmd": "",
         "arm_launch_cmd": "",
         "camera_launch_cmd": "",
         "camera_pre_cmd": "",
@@ -156,6 +158,9 @@ STATE = {
     },
 }
 
+SUDO_PASSWORD = None
+SUDO_LOCK = threading.Lock()
+
 
 def add_log_line(line):
     with STATE_LOCK:
@@ -178,6 +183,41 @@ def sanitize_token(value):
 
 def ensure_dir(path):
     Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def set_sudo_password(value):
+    global SUDO_PASSWORD
+    with SUDO_LOCK:
+        SUDO_PASSWORD = value if value else None
+
+
+def get_sudo_password():
+    with SUDO_LOCK:
+        return SUDO_PASSWORD
+
+
+def build_env():
+    env = os.environ.copy()
+    sudo_pw = get_sudo_password()
+    if sudo_pw:
+        env["SUDO_PASSWORD"] = sudo_pw
+    return env
+
+
+def run_shell(cmd, timeout=None, input_text=None):
+    try:
+        return subprocess.run(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env=build_env(),
+            input=input_text,
+        )
+    except Exception:
+        return None
 
 
 def session_paths(user_id, task_name):
@@ -320,7 +360,7 @@ class StackRunner:
             cwd=workdir or None,
             text=True,
             bufsize=1,
-            env=os.environ.copy(),
+            env=build_env(),
         )
         self.processes[name] = proc
 
@@ -404,6 +444,10 @@ def ensure_stack_running():
     logs_dir = stack_logs_dir(session)
     ensure_dir(logs_dir)
     delay = float(CONFIG.get("stack_start_delay", 0) or 0)
+    require_sudo = bool(CONFIG.get("require_sudo_password", False))
+    if require_sudo and not get_sudo_password():
+        add_stack_log_line("[error] sudo_password_missing")
+        return False, "sudo_password_missing"
 
     def _start_named(name, external=False):
         cmd = cmds.get(name)
@@ -430,6 +474,16 @@ def ensure_stack_running():
         _start_named("roscore")
     if delay > 0:
         time.sleep(delay)
+    arm_pre_cmd = CONFIG.get("arm_pre_cmd") or ""
+    if arm_pre_cmd:
+        result = run_shell(arm_pre_cmd, timeout=30)
+        if result is None:
+            add_stack_log_line("[warn] arm_pre_cmd failed to run")
+        else:
+            if result.returncode != 0:
+                add_stack_log_line(f"[warn] arm_pre_cmd failed: {result.stderr.strip() or result.stdout.strip()}")
+            else:
+                add_stack_log_line("[info] arm_pre_cmd executed")
     _start_named("arm")
     if delay > 0:
         time.sleep(delay)
@@ -739,12 +793,23 @@ def cleanup_camera():
     remaining_nodes = []
     remaining_procs = {}
     last_error = None
-    sudo_prefix = "sudo -n " if use_sudo else ""
+    sudo_prefix = ""
+    sudo_input = None
+    if use_sudo:
+        if get_sudo_password():
+            sudo_prefix = "sudo -S "
+            sudo_input = f"{get_sudo_password()}\n"
+        else:
+            sudo_prefix = "sudo -n "
 
     for attempt in range(retries):
         if pre_cmd:
             try:
-                subprocess.run(["bash", "-lc", pre_cmd], check=False)
+                subprocess.run(
+                    ["bash", "-lc", pre_cmd],
+                    check=False,
+                    env=build_env(),
+                )
                 add_stack_log_line("[info] camera_pre_cmd executed")
             except Exception as exc:
                 last_error = str(exc)
@@ -762,6 +827,9 @@ def cleanup_camera():
                 subprocess.run(
                     ["bash", "-lc", f"{sudo_prefix}pkill -f {shlex.quote(pattern)}"],
                     check=False,
+                    env=build_env(),
+                    input=sudo_input,
+                    text=True,
                 )
                 killed_patterns.append(pattern)
             except Exception as exc:
@@ -769,7 +837,13 @@ def cleanup_camera():
 
         if extra_cmd:
             try:
-                subprocess.run(["bash", "-lc", f"{sudo_prefix}{extra_cmd}"], check=False)
+                subprocess.run(
+                    ["bash", "-lc", f"{sudo_prefix}{extra_cmd}"],
+                    check=False,
+                    env=build_env(),
+                    input=sudo_input,
+                    text=True,
+                )
                 add_stack_log_line("[info] camera_cleanup_extra_cmd executed")
             except Exception as exc:
                 last_error = str(exc)
@@ -856,7 +930,20 @@ def api_status():
     data["collect_configured"] = bool(
         CONFIG.get("collect_shell_template") or CONFIG.get("collect_script")
     )
+    data["sudo_ready"] = bool(get_sudo_password())
     return jsonify(data)
+
+
+@app.route("/api/sudo", methods=["POST"])
+def api_sudo():
+    payload = request.get_json(silent=True) or {}
+    password = payload.get("password")
+    if isinstance(password, str):
+        password = password.strip()
+    else:
+        password = ""
+    set_sudo_password(password)
+    return jsonify({"ok": True, "set": bool(password)})
 
 
 @app.route("/api/session/start", methods=["POST"])

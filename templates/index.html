@@ -75,6 +75,19 @@
             <span class="label">Master Data</span>
             <span class="value mono" id="master-status">-</span>
           </div>
+          <div class="status-row">
+            <span class="label">Sudo</span>
+            <span class="value mono" id="sudo-status">-</span>
+          </div>
+          <div class="field">
+            <label for="sudo-password">Sudo Password</label>
+            <input id="sudo-password" type="password" placeholder="agx" />
+          </div>
+          <div class="button-row">
+            <button id="set-sudo" class="primary small">Set Sudo</button>
+            <button id="clear-sudo" class="ghost small">Clear</button>
+          </div>
+          <p class="hint" id="sudo-msg">Sudo password not set.</p>
           <div class="button-row">
             <button id="start-stack" class="primary">Start Stack</button>
             <button id="stop-stack" class="ghost">Stop Stack</button>
