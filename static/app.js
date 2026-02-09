@@ -27,6 +27,8 @@ const prepareReplayBtn = document.getElementById("prepare-replay");
 const startStackBtn = document.getElementById("start-stack");
 const stopStackBtn = document.getElementById("stop-stack");
 const checkTopicsBtn = document.getElementById("check-topics");
+const copyLiveLogBtn = document.getElementById("copy-live-log");
+const copyStackLogBtn = document.getElementById("copy-stack-log");
 
 let lastStatus = null;
 
@@ -102,7 +104,12 @@ function updateUI(data) {
   const processes = data.stack_processes || {};
   const list = Object.keys(processes).length
     ? Object.entries(processes)
-        .map(([name, info]) => `${name}:${info.running ? "on" : "off"}`)
+        .map(([name, info]) => {
+          if (info.external) {
+            return `${name}:ext`;
+          }
+          return `${name}:${info.running ? "on" : "off"}`;
+        })
         .join(" ")
     : "-";
   stackListEl.textContent = list;
@@ -110,9 +117,14 @@ function updateUI(data) {
   const topicStatus = data.topic_status || {};
   if (topicStatus.last_check) {
     const missing = topicStatus.missing || [];
-    topicMsgEl.textContent = missing.length
-      ? `Missing topics: ${missing.join(", ")}`
-      : "All required topics present.";
+    const missingOptional = topicStatus.missing_optional || [];
+    if (missing.length) {
+      topicMsgEl.textContent = `Missing required: ${missing.join(", ")}`;
+    } else if (missingOptional.length) {
+      topicMsgEl.textContent = `Missing optional: ${missingOptional.join(", ")}`;
+    } else {
+      topicMsgEl.textContent = "All required topics present.";
+    }
   } else {
     topicMsgEl.textContent = "No topic check yet.";
   }
@@ -121,6 +133,33 @@ function updateUI(data) {
   stackLogOutputEl.textContent = stackLogLines.length
     ? stackLogLines.join("\n")
     : "No output yet.";
+}
+
+async function copyText(text) {
+  if (!text) {
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
+function flashButton(button, text) {
+  const original = button.textContent;
+  button.textContent = text;
+  setTimeout(() => {
+    button.textContent = original;
+  }, 900);
 }
 
 async function refreshStatus() {
@@ -226,6 +265,24 @@ checkTopicsBtn.addEventListener("click", async () => {
     await refreshStatus();
   } catch (err) {
     topicMsgEl.textContent = `Check error: ${err.message}`;
+  }
+});
+
+copyLiveLogBtn.addEventListener("click", async () => {
+  try {
+    await copyText(logOutputEl.textContent);
+    flashButton(copyLiveLogBtn, "Copied");
+  } catch (err) {
+    flashButton(copyLiveLogBtn, "Failed");
+  }
+});
+
+copyStackLogBtn.addEventListener("click", async () => {
+  try {
+    await copyText(stackLogOutputEl.textContent);
+    flashButton(copyStackLogBtn, "Copied");
+  } catch (err) {
+    flashButton(copyStackLogBtn, "Failed");
   }
 });
 

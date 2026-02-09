@@ -40,6 +40,8 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `camera_launch_cmd`
 - `topic_check_cmd`
 - `required_topics`
+- `optional_topics`
+- `roscore_check_cmd`
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 
@@ -53,6 +55,8 @@ If you use RealSense, replace `camera_launch_cmd` with:
 ```
 cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch realsense2_camera multi_camera.launch
 ```
+
+`optional_topics` is empty by default. If you need base or depth topics, add them there so missing sensors won't block capture.
 
 3) Run the server
 

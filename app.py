@@ -5,6 +5,7 @@ import os
 import random
 import re
 import signal
+import shutil
 import subprocess
 import threading
 import time
@@ -40,11 +41,21 @@ def load_config():
         "arm_launch_cmd": "",
         "camera_launch_cmd": "",
         "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
+        "roscore_check_cmd": "",
         "required_topics": [],
+        "optional_topics": [],
         "stack_start_delay": 0,
         "tail_lines": 200,
     }
     config_path = APP_ROOT / "config.json"
+    example_path = APP_ROOT / "config.example.json"
+    sync_mode = os.environ.get("SYNC_CONFIG_FROM_EXAMPLE", "1").lower()
+    force_sync = sync_mode not in ("0", "false", "no")
+    if example_path.exists() and (force_sync or not config_path.exists()):
+        try:
+            shutil.copyfile(example_path, config_path)
+        except Exception:
+            pass
     if config_path.exists():
         with config_path.open("r", encoding="utf-8") as f:
             file_cfg = json.load(f)
@@ -95,8 +106,10 @@ STATE = {
     "stack_log": deque(maxlen=TAIL_LINES),
     "topic_status": {
         "required": [],
+        "optional": [],
         "present": [],
         "missing": [],
+        "missing_optional": [],
         "last_check": None,
         "error": None,
     },
@@ -341,22 +354,29 @@ def ensure_stack_running():
     ensure_dir(logs_dir)
     delay = float(CONFIG.get("stack_start_delay", 0) or 0)
 
-    def _start_named(name):
+    def _start_named(name, external=False):
         cmd = cmds.get(name)
-        if not cmd:
+        if not cmd and not external:
             return
         with STATE_LOCK:
             STATE["stack_processes"][name] = {
                 "cmd": cmd,
                 "running": True,
                 "exit_code": None,
+                "external": external,
             }
-        log_path = logs_dir / f"stack_{name}.log"
-        started = STACK.start(name, cmd, workdir, log_path)
-        if not started:
-            add_stack_log_line(f"[warn] {name} already running")
+        if not external:
+            log_path = logs_dir / f"stack_{name}.log"
+            started = STACK.start(name, cmd, workdir, log_path)
+            if not started:
+                add_stack_log_line(f"[warn] {name} already running")
 
-    _start_named("roscore")
+    roscore_running = roscore_is_running()
+    if roscore_running:
+        add_stack_log_line("[info] roscore already running; skip start")
+        _start_named("roscore", external=True)
+    else:
+        _start_named("roscore")
     if delay > 0:
         time.sleep(delay)
     _start_named("arm")
@@ -373,11 +393,14 @@ def ensure_stack_running():
 def run_topic_check():
     cmd = CONFIG.get("topic_check_cmd")
     required = CONFIG.get("required_topics") or []
+    optional = CONFIG.get("optional_topics") or []
     if not cmd:
         return {
             "required": required,
+            "optional": optional,
             "present": [],
             "missing": required,
+            "missing_optional": optional,
             "last_check": now_iso(),
             "error": "topic_check_not_configured",
         }
@@ -392,21 +415,44 @@ def run_topic_check():
         output = result.stdout.splitlines()
         present = sorted(set(t for t in output if t.startswith("/")))
         missing = [t for t in required if t not in present]
+        missing_optional = [t for t in optional if t not in present]
         return {
             "required": required,
+            "optional": optional,
             "present": present,
             "missing": missing,
+            "missing_optional": missing_optional,
             "last_check": now_iso(),
             "error": None if result.returncode == 0 else result.stderr.strip(),
         }
     except Exception as exc:
         return {
             "required": required,
+            "optional": optional,
             "present": [],
             "missing": required,
+            "missing_optional": optional,
             "last_check": now_iso(),
             "error": str(exc),
         }
+
+
+def roscore_is_running():
+    cmd = CONFIG.get("roscore_check_cmd") or CONFIG.get("topic_check_cmd")
+    if not cmd:
+        return False
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
@@ -504,8 +550,14 @@ def api_episode_start():
         status = run_topic_check()
         with STATE_LOCK:
             STATE["topic_status"] = status
-        if status.get("missing"):
-            add_log_line(f"[error] topics_missing: {', '.join(status['missing'])}")
+        missing_required = status.get("missing") or []
+        missing_optional = status.get("missing_optional") or []
+        if missing_required:
+            add_log_line(f"[error] topics_missing: {', '.join(missing_required)}")
+            if missing_optional:
+                add_log_line(
+                    f"[warn] topics_missing_optional: {', '.join(missing_optional)}"
+                )
             return jsonify({"ok": False, "error": "topics_missing"}), 400
     cmd = build_collect_command(
         session["dataset_dir"], session["task"], next_episode

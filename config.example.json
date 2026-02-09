@@ -12,6 +12,7 @@
   "arm_launch_cmd": "cd ~/cobot_magic/Piper_ros_private-ros-noetic && bash can_config.sh && source devel/setup.bash && roslaunch piper start_ms_piper.launch mode:=0 auto_enable:=false",
   "camera_launch_cmd": "cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch astra_camera multi_camera.launch",
   "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
+  "roscore_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
   "required_topics": [
     "/master/joint_left",
     "/master/joint_right",
@@ -26,19 +27,11 @@
     "/camera_f/color/image_raw",
     "/camera_l/color/image_raw",
     "/camera_r/color/image_raw",
-    "/camera_f/aligned_depth_to_color/image_raw",
-    "/camera_l/aligned_depth_to_color/image_raw",
-    "/camera_r/aligned_depth_to_color/image_raw",
     "/camera_f/color/camera_info",
     "/camera_l/color/camera_info",
-    "/camera_r/color/camera_info",
-    "/camera_f/aligned_depth_to_color/camera_info",
-    "/camera_l/aligned_depth_to_color/camera_info",
-    "/camera_r/aligned_depth_to_color/camera_info",
-    "/odom",
-    "/tracer_states",
-    "/cmd_vel"
+    "/camera_r/color/camera_info"
   ],
+  "optional_topics": [],
   "stack_start_delay": 2,
   "tail_lines": 200
 }

@@ -116,13 +116,19 @@
         </section>
 
         <section class="card log-card">
-          <h2>Live Log Tail</h2>
+          <div class="card-header">
+            <h2>Live Log Tail</h2>
+            <button id="copy-live-log" class="ghost small">Copy</button>
+          </div>
           <p class="muted">Latest collector output (tail).</p>
           <pre id="log-output">No output yet.</pre>
         </section>
 
         <section class="card log-card">
-          <h2>Stack Log Tail</h2>
+          <div class="card-header">
+            <h2>Stack Log Tail</h2>
+            <button id="copy-stack-log" class="ghost small">Copy</button>
+          </div>
           <p class="muted">Latest ROS/launch output (tail).</p>
           <pre id="stack-log-output">No output yet.</pre>
         </section>
