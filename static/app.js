@@ -269,12 +269,18 @@ clearSudoBtn.addEventListener("click", async () => {
 });
 
 startEpisodeBtn.addEventListener("click", async () => {
+  startEpisodeBtn.disabled = true;
+  const original = startEpisodeBtn.textContent;
+  startEpisodeBtn.textContent = "Starting...";
   try {
     const data = await apiRequest("/api/episode/start", { method: "POST", body: "{}" });
     episodeMsgEl.textContent = `Episode ${data.episode} started.`;
     await refreshStatus();
   } catch (err) {
     episodeMsgEl.textContent = `Start error: ${err.message}`;
+  } finally {
+    startEpisodeBtn.disabled = false;
+    startEpisodeBtn.textContent = original;
   }
 });
 

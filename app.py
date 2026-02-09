@@ -62,6 +62,7 @@ def load_config():
         "camera_cleanup_extra_cmd": "",
         "rosnode_list_cmd": "source /opt/ros/noetic/setup.bash && rosnode list",
         "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
+        "topic_check_on_start": True,
         "topic_echo_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic echo -n 1 {topic}",
         "topic_echo_timeout": 2,
         "require_topic_messages": True,
@@ -1067,47 +1068,52 @@ def api_episode_start():
     if running:
         add_log_line("[error] already_running")
         return jsonify({"ok": False, "error": "already_running"}), 409
+    add_log_line("[info] episode_start_requested")
     if CONFIG.get("auto_start_stack", False):
         ok, err = ensure_stack_running()
         if not ok:
+            add_log_line(f"[error] stack_start_failed: {err}")
             return jsonify({"ok": False, "error": err}), 400
-        status = run_topic_check()
-        with STATE_LOCK:
-            STATE["topic_status"] = status
-        missing_required = status.get("missing") or []
-        missing_optional = status.get("missing_optional") or []
-        missing_data = status.get("missing_data") or []
-        missing_optional_data = status.get("missing_optional_data") or []
-        master_topics = set(CONFIG.get("master_topics") or [])
-        if missing_required:
-            non_master_missing = [t for t in missing_required if t not in master_topics]
-            if non_master_missing:
-                add_log_line(f"[error] topics_missing: {', '.join(non_master_missing)}")
-                if missing_optional:
-                    add_log_line(
-                        f"[warn] topics_missing_optional: {', '.join(missing_optional)}"
-                    )
-                return jsonify({"ok": False, "error": "topics_missing"}), 400
-            if not ensure_master_data():
-                add_log_line("[error] master_no_data_after_restart")
-                return jsonify({"ok": False, "error": "master_no_data"}), 400
+        if CONFIG.get("topic_check_on_start", True):
             status = run_topic_check()
             with STATE_LOCK:
                 STATE["topic_status"] = status
             missing_required = status.get("missing") or []
+            missing_optional = status.get("missing_optional") or []
             missing_data = status.get("missing_data") or []
-        if missing_data:
-            non_master_missing = [t for t in missing_data if t not in master_topics]
-            if non_master_missing:
-                add_log_line(f"[error] topics_no_data: {', '.join(non_master_missing)}")
-                if missing_optional_data:
-                    add_log_line(
-                        f"[warn] topics_no_data_optional: {', '.join(missing_optional_data)}"
-                    )
-                return jsonify({"ok": False, "error": "topics_no_data"}), 400
-            if not ensure_master_data():
-                add_log_line("[error] master_no_data_after_restart")
-                return jsonify({"ok": False, "error": "master_no_data"}), 400
+            missing_optional_data = status.get("missing_optional_data") or []
+            master_topics = set(CONFIG.get("master_topics") or [])
+            if missing_required:
+                non_master_missing = [t for t in missing_required if t not in master_topics]
+                if non_master_missing:
+                    add_log_line(f"[error] topics_missing: {', '.join(non_master_missing)}")
+                    if missing_optional:
+                        add_log_line(
+                            f"[warn] topics_missing_optional: {', '.join(missing_optional)}"
+                        )
+                    return jsonify({"ok": False, "error": "topics_missing"}), 400
+                if not ensure_master_data():
+                    add_log_line("[error] master_no_data_after_restart")
+                    return jsonify({"ok": False, "error": "master_no_data"}), 400
+                status = run_topic_check()
+                with STATE_LOCK:
+                    STATE["topic_status"] = status
+                missing_required = status.get("missing") or []
+                missing_data = status.get("missing_data") or []
+            if missing_data:
+                non_master_missing = [t for t in missing_data if t not in master_topics]
+                if non_master_missing:
+                    add_log_line(f"[error] topics_no_data: {', '.join(non_master_missing)}")
+                    if missing_optional_data:
+                        add_log_line(
+                            f"[warn] topics_no_data_optional: {', '.join(missing_optional_data)}"
+                        )
+                    return jsonify({"ok": False, "error": "topics_no_data"}), 400
+                if not ensure_master_data():
+                    add_log_line("[error] master_no_data_after_restart")
+                    return jsonify({"ok": False, "error": "master_no_data"}), 400
+        else:
+            add_log_line("[info] topic_check_skipped")
     cmd = build_collect_command(
         session["dataset_dir"], session["task"], next_episode
     )

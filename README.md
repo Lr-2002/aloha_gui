@@ -49,6 +49,7 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `stack_pythonpath_auto`
 - `stack_pythonpath_auto_paths`
 - `topic_check_cmd`
+- `topic_check_on_start`
 - `required_topics`
 - `optional_topics`
 - `roscore_check_cmd`
