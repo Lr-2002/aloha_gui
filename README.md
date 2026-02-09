@@ -79,6 +79,8 @@ Options:
 - `PY_VER` (default `3.8`)
 - `HOST` (default `0.0.0.0`)
 - `PORT` (default `8080`)
+- `COLLECT_DATA_DEST` (default `/home/agilex/cobot_magic/collect_data/collect_data.py`)
+- `SKIP_COLLECT_COPY=1` to disable copying `collect_data.py`
 
 ## Notes
 
