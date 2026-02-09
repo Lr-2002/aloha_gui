@@ -42,6 +42,8 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `arm_launch_cmd`
 - `camera_launch_cmd`
 - `require_sudo_password`
+- `stack_clean_env`
+- `stack_env_path`
 - `topic_check_cmd`
 - `required_topics`
 - `optional_topics`
@@ -87,6 +89,8 @@ source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/camera_ws && source devel/
 
 If `require_sudo_password` is true, set the password in the UI before starting the stack. It is stored in memory only and not written to disk.
 
+If the app is running inside conda, set `stack_clean_env=true` so ROS runs with system `python3`. This prevents ROS nodes from accidentally using conda Python.
+
 ## Troubleshooting
 
 Common issues tied to the doc steps:
@@ -100,6 +104,7 @@ Common issues tied to the doc steps:
     source /opt/ros/noetic/setup.bash
     python3 -c "import yaml; print('yaml ok')"
     ```
+  - If the error persists but `yaml ok` works in another terminal, ensure `stack_clean_env=true` so ROS launches with system Python.
 - `roscore cannot run as another roscore/master is already running`
   - Cause: A stale ROS master is already running.
   - Fix: kill the existing `roscore` or reboot as a last resort.

@@ -40,6 +40,8 @@ def load_config():
         "auto_start_stack": True,
         "require_sudo_password": False,
         "stack_workdir": "",
+        "stack_clean_env": False,
+        "stack_env_path": "",
         "roscore_cmd": "",
         "arm_dep_check_cmd": "",
         "arm_dep_check_required": False,
@@ -198,15 +200,24 @@ def get_sudo_password():
         return SUDO_PASSWORD
 
 
-def build_env():
+def build_env(clean=False):
     env = os.environ.copy()
+    if clean:
+        for key in list(env.keys()):
+            if key.startswith("CONDA"):
+                env.pop(key, None)
+        for key in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH"):
+            env.pop(key, None)
+        env["PATH"] = CONFIG.get("stack_env_path") or (
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        )
     sudo_pw = get_sudo_password()
     if sudo_pw:
         env["SUDO_PASSWORD"] = sudo_pw
     return env
 
 
-def run_shell(cmd, timeout=None, input_text=None):
+def run_shell(cmd, timeout=None, input_text=None, env=None):
     try:
         return subprocess.run(
             ["bash", "-lc", cmd],
@@ -215,7 +226,7 @@ def run_shell(cmd, timeout=None, input_text=None):
             text=True,
             timeout=timeout,
             check=False,
-            env=build_env(),
+            env=env or build_env(),
             input=input_text,
         )
     except Exception:
@@ -350,7 +361,7 @@ class StackRunner:
     def __init__(self):
         self.processes = {}
 
-    def start(self, name, cmd, workdir, log_path):
+    def start(self, name, cmd, workdir, log_path, env=None):
         if name in self.processes and self.processes[name].poll() is None:
             return False
         ensure_dir(log_path.parent)
@@ -362,7 +373,7 @@ class StackRunner:
             cwd=workdir or None,
             text=True,
             bufsize=1,
-            env=build_env(),
+            env=env or build_env(),
         )
         self.processes[name] = proc
 
@@ -446,6 +457,7 @@ def ensure_stack_running():
     logs_dir = stack_logs_dir(session)
     ensure_dir(logs_dir)
     delay = float(CONFIG.get("stack_start_delay", 0) or 0)
+    stack_env = build_env(clean=bool(CONFIG.get("stack_clean_env", False)))
     require_sudo = bool(CONFIG.get("require_sudo_password", False))
     if require_sudo and not get_sudo_password():
         add_stack_log_line("[error] sudo_password_missing")
@@ -464,7 +476,7 @@ def ensure_stack_running():
             }
         if not external:
             log_path = logs_dir / f"stack_{name}.log"
-            started = STACK.start(name, cmd, workdir, log_path)
+            started = STACK.start(name, cmd, workdir, log_path, env=stack_env)
             if not started:
                 add_stack_log_line(f"[warn] {name} already running")
 
@@ -479,7 +491,7 @@ def ensure_stack_running():
     dep_cmd = CONFIG.get("arm_dep_check_cmd") or ""
     dep_required = bool(CONFIG.get("arm_dep_check_required", False))
     if dep_cmd:
-        dep_result = run_shell(dep_cmd, timeout=10)
+        dep_result = run_shell(dep_cmd, timeout=10, env=stack_env)
         if dep_result is None:
             add_stack_log_line("[error] arm_dep_check_failed: run_error")
             if dep_required:
@@ -493,7 +505,7 @@ def ensure_stack_running():
             add_stack_log_line("[info] arm_dep_check ok")
     arm_pre_cmd = CONFIG.get("arm_pre_cmd") or ""
     if arm_pre_cmd:
-        result = run_shell(arm_pre_cmd, timeout=30)
+        result = run_shell(arm_pre_cmd, timeout=30, env=stack_env)
         if result is None:
             add_stack_log_line("[warn] arm_pre_cmd failed to run")
         else:
@@ -814,6 +826,7 @@ def cleanup_camera():
     last_error = None
     sudo_prefix = ""
     sudo_input = None
+    base_env = build_env(clean=bool(CONFIG.get("stack_clean_env", False)))
     if use_sudo:
         if get_sudo_password():
             sudo_prefix = "sudo -S "
@@ -827,7 +840,7 @@ def cleanup_camera():
                 subprocess.run(
                     ["bash", "-lc", pre_cmd],
                     check=False,
-                    env=build_env(),
+                    env=base_env,
                 )
                 add_stack_log_line("[info] camera_pre_cmd executed")
             except Exception as exc:
@@ -846,7 +859,7 @@ def cleanup_camera():
                 subprocess.run(
                     ["bash", "-lc", f"{sudo_prefix}pkill -f {shlex.quote(pattern)}"],
                     check=False,
-                    env=build_env(),
+                    env=base_env,
                     input=sudo_input,
                     text=True,
                 )
@@ -859,7 +872,7 @@ def cleanup_camera():
                 subprocess.run(
                     ["bash", "-lc", f"{sudo_prefix}{extra_cmd}"],
                     check=False,
-                    env=build_env(),
+                    env=base_env,
                     input=sudo_input,
                     text=True,
                 )

@@ -9,6 +9,8 @@
   "auto_start_stack": true,
   "require_sudo_password": true,
   "stack_workdir": "",
+  "stack_clean_env": true,
+  "stack_env_path": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
   "roscore_cmd": "source /opt/ros/noetic/setup.bash && roscore",
   "arm_dep_check_cmd": "source /opt/ros/noetic/setup.bash && python3 -c \"import yaml\"",
   "arm_dep_check_required": true,
