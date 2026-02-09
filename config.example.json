@@ -11,6 +11,7 @@
   "stack_workdir": "",
   "stack_clean_env": true,
   "stack_env_path": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  "stack_python_bin": "/home/agilex/miniconda3/envs/aloha/bin/python3",
   "stack_pythonpath": "",
   "stack_pythonpath_auto": true,
   "stack_pythonpath_auto_paths": [

@@ -44,6 +44,7 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `require_sudo_password`
 - `stack_clean_env`
 - `stack_env_path`
+- `stack_python_bin`
 - `stack_pythonpath`
 - `stack_pythonpath_auto`
 - `stack_pythonpath_auto_paths`
@@ -92,7 +93,10 @@ source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/camera_ws && source devel/
 
 If `require_sudo_password` is true, set the password in the UI before starting the stack. It is stored in memory only and not written to disk.
 
-If the app is running inside conda, set `stack_clean_env=true` so ROS runs with system `python3`. This prevents ROS nodes from accidentally using conda Python.
+Use `stack_clean_env=true` to avoid inheriting the current shell environment; then choose the Python explicitly:
+
+- System Python: leave `stack_python_bin` empty.
+- Conda Python: set `stack_python_bin` (for example `/home/agilex/miniconda3/envs/aloha/bin/python3`).
 
 If `piper_sdk` is missing, add its folder to `PYTHONPATH` for the stack:
 

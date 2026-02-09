@@ -42,6 +42,7 @@ def load_config():
         "stack_workdir": "",
         "stack_clean_env": False,
         "stack_env_path": "",
+        "stack_python_bin": "",
         "stack_pythonpath": "",
         "stack_pythonpath_auto": False,
         "stack_pythonpath_auto_paths": [],
@@ -222,6 +223,11 @@ def build_env(clean=False):
 
 def build_stack_env():
     env = build_env(clean=bool(CONFIG.get("stack_clean_env", False)))
+    python_bin = CONFIG.get("stack_python_bin") or ""
+    if python_bin:
+        python_bin = expand_path(python_bin)
+        python_dir = str(Path(python_bin).parent)
+        env["PATH"] = f"{python_dir}:{env.get('PATH', '')}"
     pythonpaths = []
     explicit = CONFIG.get("stack_pythonpath") or ""
     if explicit:
