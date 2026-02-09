@@ -17,6 +17,9 @@
   "topic_echo_timeout": 2,
   "require_topic_messages": true,
   "roscore_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
+  "topic_info_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic info {topic}",
+  "topic_info_timeout": 2,
+  "rosnode_kill_cmd": "source /opt/ros/noetic/setup.bash && rosnode kill {nodes}",
   "required_topics": [
     "/master/joint_left",
     "/master/joint_right",
@@ -36,6 +39,10 @@
     "/camera_r/color/camera_info"
   ],
   "optional_topics": [],
+  "master_topics": ["/master/joint_left", "/master/joint_right"],
+  "auto_restart_master": true,
+  "master_restart_retries": 2,
+  "master_restart_delay": 2,
   "topic_check_retries": 5,
   "topic_check_delay": 1,
   "stack_start_delay": 2,

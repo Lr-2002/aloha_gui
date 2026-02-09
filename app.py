@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+import atexit
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,8 +47,15 @@ def load_config():
         "topic_echo_timeout": 2,
         "require_topic_messages": True,
         "roscore_check_cmd": "",
+        "topic_info_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic info {topic}",
+        "topic_info_timeout": 2,
+        "rosnode_kill_cmd": "source /opt/ros/noetic/setup.bash && rosnode kill {nodes}",
         "required_topics": [],
         "optional_topics": [],
+        "master_topics": ["/master/joint_left", "/master/joint_right"],
+        "auto_restart_master": True,
+        "master_restart_retries": 1,
+        "master_restart_delay": 2,
         "topic_check_retries": 1,
         "topic_check_delay": 0,
         "stack_start_delay": 0,
@@ -118,6 +126,13 @@ STATE = {
         "missing_optional": [],
         "missing_data": [],
         "missing_optional_data": [],
+        "last_check": None,
+        "error": None,
+    },
+    "master_status": {
+        "topics": [],
+        "missing": [],
+        "missing_data": [],
         "last_check": None,
         "error": None,
     },
@@ -323,6 +338,16 @@ class StackRunner:
                     continue
         return stopped
 
+    def stop(self, name):
+        proc = self.processes.get(name)
+        if proc and proc.poll() is None:
+            try:
+                proc.send_signal(signal.SIGINT)
+                return True
+            except Exception:
+                return False
+        return False
+
 
 STACK = StackRunner()
 
@@ -508,6 +533,125 @@ def run_topic_check(with_data=None):
     return last_status
 
 
+def get_publishers(topic):
+    cmd_tpl = CONFIG.get("topic_info_cmd")
+    timeout = int(CONFIG.get("topic_info_timeout", 2) or 2)
+    if not cmd_tpl:
+        return []
+    cmd = cmd_tpl.format(topic=topic, timeout=timeout)
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout + 1,
+            check=False,
+        )
+        output = result.stdout.splitlines()
+        publishers = []
+        capture = False
+        for line in output:
+            line = line.strip()
+            if line.startswith("Publishers:"):
+                capture = True
+                continue
+            if capture:
+                if not line or line.startswith("Subscribers:"):
+                    break
+                if line.startswith("*"):
+                    publishers.append(line.lstrip("* ").strip())
+        return publishers
+    except Exception:
+        return []
+
+
+def kill_nodes(nodes):
+    if not nodes:
+        return False
+    cmd_tpl = CONFIG.get("rosnode_kill_cmd")
+    if not cmd_tpl:
+        return False
+    joined = " ".join(nodes)
+    cmd = cmd_tpl.format(nodes=joined)
+    try:
+        subprocess.run(["bash", "-lc", cmd], check=False)
+        return True
+    except Exception:
+        return False
+
+
+def restart_arm_process(session):
+    cmd = CONFIG.get("arm_launch_cmd")
+    if not cmd:
+        return False
+    workdir = CONFIG.get("stack_workdir") or None
+    logs_dir = stack_logs_dir(session)
+    ensure_dir(logs_dir)
+    STACK.stop("arm")
+    time.sleep(1)
+    with STATE_LOCK:
+        STATE["stack_processes"]["arm"] = {
+            "cmd": cmd,
+            "running": True,
+            "exit_code": None,
+            "external": False,
+        }
+    log_path = logs_dir / "stack_arm.log"
+    return STACK.start("arm", cmd, workdir, log_path)
+
+
+def ensure_master_data():
+    topics = CONFIG.get("master_topics") or []
+    if not topics:
+        return True
+    timeout = int(CONFIG.get("topic_echo_timeout", 2) or 2)
+    missing = []
+    missing_data = []
+    for topic in topics:
+        ok, _ = topic_has_data(topic, timeout)
+        if not ok:
+            missing_data.append(topic)
+    status = {
+        "topics": topics,
+        "missing": missing,
+        "missing_data": missing_data,
+        "last_check": now_iso(),
+        "error": None,
+    }
+    with STATE_LOCK:
+        STATE["master_status"] = status
+    if not missing_data:
+        return True
+    if not CONFIG.get("auto_restart_master", False):
+        return False
+    retries = int(CONFIG.get("master_restart_retries", 1) or 1)
+    delay = float(CONFIG.get("master_restart_delay", 0) or 0)
+    for _ in range(retries):
+        publishers = []
+        for topic in topics:
+            publishers.extend(get_publishers(topic))
+        if publishers:
+            kill_nodes(sorted(set(publishers)))
+            add_log_line(f"[warn] master publishers killed: {', '.join(sorted(set(publishers)))}")
+        session = STATE.get("session")
+        restarted = restart_arm_process(session)
+        if restarted:
+            add_log_line("[info] arm process restarted for master recovery")
+        if delay > 0:
+            time.sleep(delay)
+        missing_data = []
+        for topic in topics:
+            ok, _ = topic_has_data(topic, timeout)
+            if not ok:
+                missing_data.append(topic)
+        if not missing_data:
+            return True
+    with STATE_LOCK:
+        STATE["master_status"]["missing_data"] = missing_data
+    return False
+
+
 def roscore_is_running():
     cmd = CONFIG.get("roscore_check_cmd") or CONFIG.get("topic_check_cmd")
     if not cmd:
@@ -560,6 +704,7 @@ def api_status():
             "stack_processes": STATE["stack_processes"],
             "stack_log": list(STATE["stack_log"]),
             "topic_status": STATE["topic_status"],
+            "master_status": STATE["master_status"],
         }
     data["data_root"] = DATA_ROOT
     data["collect_configured"] = bool(
@@ -625,20 +770,36 @@ def api_episode_start():
         missing_optional = status.get("missing_optional") or []
         missing_data = status.get("missing_data") or []
         missing_optional_data = status.get("missing_optional_data") or []
+        master_topics = set(CONFIG.get("master_topics") or [])
         if missing_required:
-            add_log_line(f"[error] topics_missing: {', '.join(missing_required)}")
-            if missing_optional:
-                add_log_line(
-                    f"[warn] topics_missing_optional: {', '.join(missing_optional)}"
-                )
-            return jsonify({"ok": False, "error": "topics_missing"}), 400
+            non_master_missing = [t for t in missing_required if t not in master_topics]
+            if non_master_missing:
+                add_log_line(f"[error] topics_missing: {', '.join(non_master_missing)}")
+                if missing_optional:
+                    add_log_line(
+                        f"[warn] topics_missing_optional: {', '.join(missing_optional)}"
+                    )
+                return jsonify({"ok": False, "error": "topics_missing"}), 400
+            if not ensure_master_data():
+                add_log_line("[error] master_no_data_after_restart")
+                return jsonify({"ok": False, "error": "master_no_data"}), 400
+            status = run_topic_check()
+            with STATE_LOCK:
+                STATE["topic_status"] = status
+            missing_required = status.get("missing") or []
+            missing_data = status.get("missing_data") or []
         if missing_data:
-            add_log_line(f"[error] topics_no_data: {', '.join(missing_data)}")
-            if missing_optional_data:
-                add_log_line(
-                    f"[warn] topics_no_data_optional: {', '.join(missing_optional_data)}"
-                )
-            return jsonify({"ok": False, "error": "topics_no_data"}), 400
+            non_master_missing = [t for t in missing_data if t not in master_topics]
+            if non_master_missing:
+                add_log_line(f"[error] topics_no_data: {', '.join(non_master_missing)}")
+                if missing_optional_data:
+                    add_log_line(
+                        f"[warn] topics_no_data_optional: {', '.join(missing_optional_data)}"
+                    )
+                return jsonify({"ok": False, "error": "topics_no_data"}), 400
+            if not ensure_master_data():
+                add_log_line("[error] master_no_data_after_restart")
+                return jsonify({"ok": False, "error": "master_no_data"}), 400
     cmd = build_collect_command(
         session["dataset_dir"], session["task"], next_episode
     )
@@ -789,11 +950,28 @@ def api_replay_prepare():
     return jsonify({"ok": True, "replay": payload})
 
 
+def cleanup_processes():
+    try:
+        RUNNER.stop()
+    except Exception:
+        pass
+    try:
+        STACK.stop_all()
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
     args = parser.parse_args()
+    atexit.register(cleanup_processes)
+    def _handle_exit(signum, frame):
+        cleanup_processes()
+        raise SystemExit(0)
+    signal.signal(signal.SIGINT, _handle_exit)
+    signal.signal(signal.SIGTERM, _handle_exit)
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
 
 

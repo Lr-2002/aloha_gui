@@ -48,6 +48,13 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `topic_echo_cmd`
 - `topic_echo_timeout`
 - `require_topic_messages`
+- `topic_info_cmd`
+- `topic_info_timeout`
+- `rosnode_kill_cmd`
+- `master_topics`
+- `auto_restart_master`
+- `master_restart_retries`
+- `master_restart_delay`
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 
@@ -63,6 +70,8 @@ cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch realsense2_ca
 ```
 
 `optional_topics` is empty by default. If you need base or depth topics, add them there so missing sensors won't block capture.
+
+If master topics have no data, the server can kill the master publishers and restart the arm launch (see `master_topics` and `auto_restart_master`).
 
 3) Run the server
 
