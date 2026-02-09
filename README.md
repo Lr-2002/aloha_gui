@@ -36,6 +36,8 @@ Example shell template matching the default AgileX image paths (conda + ROS):
 System stack (auto-start ROS + arm + camera) is configurable via:
 
 - `roscore_cmd`
+- `arm_dep_check_cmd`
+- `arm_dep_check_required`
 - `arm_pre_cmd`
 - `arm_launch_cmd`
 - `camera_launch_cmd`
@@ -68,8 +70,9 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 
-Default `arm_pre_cmd`, `arm_launch_cmd` and `camera_launch_cmd` in `config.example.json` match the doc:
+Default `arm_dep_check_cmd`, `arm_pre_cmd`, `arm_launch_cmd` and `camera_launch_cmd` in `config.example.json` match the doc:
 
+- Arm dep check: `python3 -c "import yaml"` in ROS env (fails if `python3-yaml` is missing).
 - Arm pre: `sudo bash can_config.sh`
 - Arm: `roslaunch piper start_ms_piper.launch mode:=0 auto_enable:=false`
 - Camera: `roslaunch astra_camera multi_camera.launch`
@@ -83,6 +86,37 @@ source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/camera_ws && source devel/
 `optional_topics` contains depth/camera-info/base topics from the doc. Move them into `required_topics` if you want to block capture when they are missing.
 
 If `require_sudo_password` is true, set the password in the UI before starting the stack. It is stored in memory only and not written to disk.
+
+## Troubleshooting
+
+Common issues tied to the doc steps:
+
+- `ModuleNotFoundError: No module named 'yaml'` while starting arm
+  - Cause: ROS Python missing `pyyaml`.
+  - Fix:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y python3-yaml
+    source /opt/ros/noetic/setup.bash
+    python3 -c "import yaml; print('yaml ok')"
+    ```
+- `roscore cannot run as another roscore/master is already running`
+  - Cause: A stale ROS master is already running.
+  - Fix: kill the existing `roscore` or reboot as a last resort.
+- Camera warnings like `... calibration file ... not found` or IR stream warnings
+  - If `/camera_* /color/image_raw` is publishing, you can ignore IR/depth warnings when collecting color-only data.
+
+Arm not moving to position (or master topics have no data):
+
+- Check arm nodes are alive (`rosnode list` shows `piper_left`/`piper_right`).
+- Check `/master/joint_left` and `/master/joint_right` have data (`rostopic hz ...`).
+- For data collection, `mode:=0` is correct; for control/replay, the doc says `mode:=1 auto_enable:=true` is required.
+- If CAN mapping is wrong or `can_config.sh` failed, joint data can be empty.
+
+Why reboot sometimes “fixes” it:
+
+- It resets ROS master, CAN device mapping, and USB camera locks that can leave nodes in a bad state.
+- It clears stale processes that `roscore` refuses to overwrite.
 
 If master topics have no data, the server can kill the master publishers and restart the arm launch (see `master_topics` and `auto_restart_master`).
 

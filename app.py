@@ -41,6 +41,8 @@ def load_config():
         "require_sudo_password": False,
         "stack_workdir": "",
         "roscore_cmd": "",
+        "arm_dep_check_cmd": "",
+        "arm_dep_check_required": False,
         "arm_pre_cmd": "",
         "arm_launch_cmd": "",
         "camera_launch_cmd": "",
@@ -474,6 +476,21 @@ def ensure_stack_running():
         _start_named("roscore")
     if delay > 0:
         time.sleep(delay)
+    dep_cmd = CONFIG.get("arm_dep_check_cmd") or ""
+    dep_required = bool(CONFIG.get("arm_dep_check_required", False))
+    if dep_cmd:
+        dep_result = run_shell(dep_cmd, timeout=10)
+        if dep_result is None:
+            add_stack_log_line("[error] arm_dep_check_failed: run_error")
+            if dep_required:
+                return False, "arm_dep_check_failed"
+        elif dep_result.returncode != 0:
+            msg = dep_result.stderr.strip() or dep_result.stdout.strip() or "failed"
+            add_stack_log_line(f"[error] arm_dep_check_failed: {msg}")
+            if dep_required:
+                return False, "arm_dep_check_failed"
+        else:
+            add_stack_log_line("[info] arm_dep_check ok")
     arm_pre_cmd = CONFIG.get("arm_pre_cmd") or ""
     if arm_pre_cmd:
         result = run_shell(arm_pre_cmd, timeout=30)
@@ -481,7 +498,9 @@ def ensure_stack_running():
             add_stack_log_line("[warn] arm_pre_cmd failed to run")
         else:
             if result.returncode != 0:
-                add_stack_log_line(f"[warn] arm_pre_cmd failed: {result.stderr.strip() or result.stdout.strip()}")
+                add_stack_log_line(
+                    f"[warn] arm_pre_cmd failed: {result.stderr.strip() or result.stdout.strip()}"
+                )
             else:
                 add_stack_log_line("[info] arm_pre_cmd executed")
     _start_named("arm")

@@ -10,6 +10,8 @@
   "require_sudo_password": true,
   "stack_workdir": "",
   "roscore_cmd": "source /opt/ros/noetic/setup.bash && roscore",
+  "arm_dep_check_cmd": "source /opt/ros/noetic/setup.bash && python3 -c \"import yaml\"",
+  "arm_dep_check_required": true,
   "arm_pre_cmd": "source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/Piper_ros_private-ros-noetic && printf '%s\\n' \"$SUDO_PASSWORD\" | sudo -S bash can_config.sh",
   "arm_launch_cmd": "source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/Piper_ros_private-ros-noetic && source devel/setup.bash && roslaunch piper start_ms_piper.launch mode:=0 auto_enable:=false",
   "camera_launch_cmd": "source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch astra_camera multi_camera.launch",
