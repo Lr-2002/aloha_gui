@@ -29,7 +29,7 @@ Example shell template matching the default AgileX image paths:
 
 ```json
 {
-  "collect_shell_template": "source /opt/ros/noetic/setup.bash && source ~/cobot_magic/aloha-devel/devel/setup.bash && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
+  "collect_shell_template": "source /opt/ros/noetic/setup.bash && source ~/cobot_magic/Piper_ros_private-ros-noetic/devel/setup.bash && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
 }
 ```
 
