@@ -40,10 +40,13 @@ def load_config():
         "roscore_cmd": "",
         "arm_launch_cmd": "",
         "camera_launch_cmd": "",
+        "camera_pre_cmd": "",
         "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
         "roscore_check_cmd": "",
         "required_topics": [],
         "optional_topics": [],
+        "topic_check_retries": 1,
+        "topic_check_delay": 0,
         "stack_start_delay": 0,
         "tail_lines": 200,
     }
@@ -382,6 +385,13 @@ def ensure_stack_running():
     _start_named("arm")
     if delay > 0:
         time.sleep(delay)
+    pre_cmd = CONFIG.get("camera_pre_cmd")
+    if pre_cmd:
+        try:
+            subprocess.run(["bash", "-lc", pre_cmd], check=False)
+            add_stack_log_line("[info] camera_pre_cmd executed")
+        except Exception as exc:
+            add_stack_log_line(f"[warn] camera_pre_cmd failed: {exc}")
     _start_named("camera")
     with STATE_LOCK:
         STATE["stack_running"] = any(
@@ -394,6 +404,8 @@ def run_topic_check():
     cmd = CONFIG.get("topic_check_cmd")
     required = CONFIG.get("required_topics") or []
     optional = CONFIG.get("optional_topics") or []
+    retries = int(CONFIG.get("topic_check_retries", 1) or 1)
+    delay = float(CONFIG.get("topic_check_delay", 0) or 0)
     if not cmd:
         return {
             "required": required,
@@ -404,37 +416,44 @@ def run_topic_check():
             "last_check": now_iso(),
             "error": "topic_check_not_configured",
         }
-    try:
-        result = subprocess.run(
-            ["bash", "-lc", cmd],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-        output = result.stdout.splitlines()
-        present = sorted(set(t for t in output if t.startswith("/")))
-        missing = [t for t in required if t not in present]
-        missing_optional = [t for t in optional if t not in present]
-        return {
-            "required": required,
-            "optional": optional,
-            "present": present,
-            "missing": missing,
-            "missing_optional": missing_optional,
-            "last_check": now_iso(),
-            "error": None if result.returncode == 0 else result.stderr.strip(),
-        }
-    except Exception as exc:
-        return {
-            "required": required,
-            "optional": optional,
-            "present": [],
-            "missing": required,
-            "missing_optional": optional,
-            "last_check": now_iso(),
-            "error": str(exc),
-        }
+    last_status = None
+    for attempt in range(retries):
+        try:
+            result = subprocess.run(
+                ["bash", "-lc", cmd],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            output = result.stdout.splitlines()
+            present = sorted(set(t for t in output if t.startswith("/")))
+            missing = [t for t in required if t not in present]
+            missing_optional = [t for t in optional if t not in present]
+            last_status = {
+                "required": required,
+                "optional": optional,
+                "present": present,
+                "missing": missing,
+                "missing_optional": missing_optional,
+                "last_check": now_iso(),
+                "error": None if result.returncode == 0 else result.stderr.strip(),
+            }
+            if not missing:
+                return last_status
+        except Exception as exc:
+            last_status = {
+                "required": required,
+                "optional": optional,
+                "present": [],
+                "missing": required,
+                "missing_optional": optional,
+                "last_check": now_iso(),
+                "error": str(exc),
+            }
+        if attempt < retries - 1 and delay > 0:
+            time.sleep(delay)
+    return last_status
 
 
 def roscore_is_running():

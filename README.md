@@ -42,6 +42,9 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `required_topics`
 - `optional_topics`
 - `roscore_check_cmd`
+- `topic_check_retries`
+- `topic_check_delay`
+- `camera_pre_cmd`
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 
