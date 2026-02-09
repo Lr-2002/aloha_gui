@@ -1560,13 +1560,16 @@ def api_episode_stop():
         )
     stopped = RUNNER.stop()
     if not stopped:
+        state_reset = False
         with STATE_LOCK:
             if STATE["running"] or STATE["current_episode"] is not None:
                 STATE["running"] = False
                 STATE["current_episode"] = None
                 STATE["last_error"] = "no_running_process"
-                add_log_line("[warn] stop called with no process; state reset")
-                return jsonify({"ok": True, "note": "state_reset"})
+                state_reset = True
+        if state_reset:
+            add_log_line("[warn] stop called with no process; state reset")
+            return jsonify({"ok": True, "note": "state_reset"})
         return jsonify({"ok": False, "error": "no_running_process"}), 409
     return jsonify({"ok": True, "note": "signal_sent"})
 
