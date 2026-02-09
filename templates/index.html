@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data Capture Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="tag">cobot_magic capture</p>
+          <h1>Episode Capture Console</h1>
+          <p class="subtitle">
+            Collect episodes to <span class="mono">~/data/&lt;user&gt;/&lt;task&gt;</span> and keep the flow smooth.
+          </p>
+        </div>
+        <div class="status-card">
+          <div class="status-row">
+            <span class="label">State</span>
+            <span class="pill" id="status-pill">idle</span>
+          </div>
+          <div class="status-row">
+            <span class="label">Next Episode</span>
+            <span class="value" id="next-episode">0</span>
+          </div>
+          <div class="status-row">
+            <span class="label">Data Root</span>
+            <span class="value mono" id="data-root">~/data</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="card">
+          <h2>Session Setup</h2>
+          <p class="muted">Define the operator and task name before starting episodes.</p>
+          <div class="field">
+            <label for="user-id">User ID</label>
+            <input id="user-id" type="text" placeholder="wxh" />
+          </div>
+          <div class="field">
+            <label for="task-name">Task Name</label>
+            <input id="task-name" type="text" placeholder="pick_and_place" />
+          </div>
+          <button id="start-session" class="primary">Start Session</button>
+          <p class="hint" id="session-path">Session path: -</p>
+        </section>
+
+        <section class="card">
+          <h2>Episode Control</h2>
+          <p class="muted">Click to capture the next episode. One episode at a time.</p>
+          <div class="status-row">
+            <span class="label">Current Episode</span>
+            <span class="value" id="current-episode">-</span>
+          </div>
+          <div class="status-row">
+            <span class="label">Collector</span>
+            <span class="value" id="collector-state">not configured</span>
+          </div>
+          <div class="button-row">
+            <button id="start-episode" class="primary">Start Next Episode</button>
+            <button id="stop-episode" class="ghost">Stop Episode</button>
+          </div>
+          <p class="hint" id="episode-msg">Waiting for session.</p>
+        </section>
+
+        <section class="card">
+          <h2>Episodes</h2>
+          <p class="muted">List of captured episodes for this task.</p>
+          <div class="episode-list mono" id="episode-list">-</div>
+          <div class="button-row">
+            <button id="refresh-episodes" class="ghost">Refresh</button>
+            <button id="pick-random" class="primary">Pick Random</button>
+          </div>
+          <p class="hint" id="random-msg">No episode selected.</p>
+        </section>
+
+        <section class="card">
+          <h2>Replay Stub</h2>
+          <p class="muted">Replay execution is not implemented yet. This only prepares the payload.</p>
+          <div class="status-row">
+            <span class="label">Selected Episode</span>
+            <span class="value" id="selected-episode">-</span>
+          </div>
+          <button id="prepare-replay" class="ghost">Prepare Replay</button>
+          <p class="hint" id="replay-msg">No replay payload.</p>
+        </section>
+
+        <section class="card log-card">
+          <h2>Live Log Tail</h2>
+          <p class="muted">Latest collector output (tail).</p>
+          <pre id="log-output">No output yet.</pre>
+        </section>
+      </main>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

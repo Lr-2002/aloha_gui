@@ -1,0 +1,10 @@
+{
+  "data_root": "~/data",
+  "python_bin": "python3",
+  "collect_script": "/home/robot/cobot_magic/aloha-devel/collect_data.py",
+  "collect_workdir": "/home/robot/cobot_magic/aloha-devel",
+  "collect_extra_args": [],
+  "collect_shell_template": "",
+  "replay_shell_template": "",
+  "tail_lines": 200
+}

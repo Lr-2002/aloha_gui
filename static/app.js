@@ -1,0 +1,172 @@
+const statusPill = document.getElementById("status-pill");
+const nextEpisodeEl = document.getElementById("next-episode");
+const dataRootEl = document.getElementById("data-root");
+const sessionPathEl = document.getElementById("session-path");
+const currentEpisodeEl = document.getElementById("current-episode");
+const collectorStateEl = document.getElementById("collector-state");
+const episodeMsgEl = document.getElementById("episode-msg");
+const episodeListEl = document.getElementById("episode-list");
+const randomMsgEl = document.getElementById("random-msg");
+const selectedEpisodeEl = document.getElementById("selected-episode");
+const replayMsgEl = document.getElementById("replay-msg");
+const logOutputEl = document.getElementById("log-output");
+
+const userInput = document.getElementById("user-id");
+const taskInput = document.getElementById("task-name");
+
+const startSessionBtn = document.getElementById("start-session");
+const startEpisodeBtn = document.getElementById("start-episode");
+const stopEpisodeBtn = document.getElementById("stop-episode");
+const refreshEpisodesBtn = document.getElementById("refresh-episodes");
+const pickRandomBtn = document.getElementById("pick-random");
+const prepareReplayBtn = document.getElementById("prepare-replay");
+
+let lastStatus = null;
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    const error = data && data.error ? data.error : "request_failed";
+    throw new Error(error);
+  }
+  return data;
+}
+
+function setStatusText(text, mode) {
+  statusPill.textContent = text;
+  statusPill.style.background =
+    mode === "running" ? "rgba(72, 182, 156, 0.2)" : "rgba(240, 168, 75, 0.2)";
+  statusPill.style.color = mode === "running" ? "#bdf2e5" : "#f9d39b";
+}
+
+function updateUI(data) {
+  lastStatus = data;
+  dataRootEl.textContent = data.data_root || "~/data";
+  nextEpisodeEl.textContent = data.next_episode ?? 0;
+  const running = data.running;
+  setStatusText(running ? "running" : "idle", running ? "running" : "idle");
+
+  if (data.session) {
+    sessionPathEl.textContent = `Session path: ${data.session.dataset_dir}`;
+    currentEpisodeEl.textContent =
+      data.current_episode !== null && data.current_episode !== undefined
+        ? data.current_episode
+        : "-";
+  } else {
+    sessionPathEl.textContent = "Session path: -";
+    currentEpisodeEl.textContent = "-";
+  }
+
+  collectorStateEl.textContent = data.collect_configured ? "configured" : "not configured";
+  if (!data.collect_configured) {
+    episodeMsgEl.textContent = "Set collect_script or collect_shell_template in config.json.";
+  } else if (running) {
+    episodeMsgEl.textContent = `Collecting episode ${data.current_episode}...`;
+  } else {
+    episodeMsgEl.textContent = "Ready to start the next episode.";
+  }
+
+  const episodes = data.episodes || [];
+  episodeListEl.textContent = episodes.length ? episodes.join(", ") : "-";
+
+  if (data.selected_episode !== null && data.selected_episode !== undefined) {
+    selectedEpisodeEl.textContent = data.selected_episode;
+    randomMsgEl.textContent = `Selected episode ${data.selected_episode}.`;
+  } else {
+    selectedEpisodeEl.textContent = "-";
+    randomMsgEl.textContent = "No episode selected.";
+  }
+
+  if (data.last_replay) {
+    replayMsgEl.textContent = `Prepared replay for episode ${data.last_replay.episode}.`;
+  } else {
+    replayMsgEl.textContent = "No replay payload.";
+  }
+
+  const logLines = data.last_log || [];
+  logOutputEl.textContent = logLines.length ? logLines.join("\n") : "No output yet.";
+}
+
+async function refreshStatus() {
+  try {
+    const data = await apiRequest("/api/status");
+    updateUI(data);
+  } catch (err) {
+    episodeMsgEl.textContent = `Status error: ${err.message}`;
+  }
+}
+
+startSessionBtn.addEventListener("click", async () => {
+  const user = userInput.value.trim();
+  const task = taskInput.value.trim();
+  if (!user || !task) {
+    episodeMsgEl.textContent = "User ID and Task Name are required.";
+    return;
+  }
+  try {
+    await apiRequest("/api/session/start", {
+      method: "POST",
+      body: JSON.stringify({ user, task }),
+    });
+    await refreshStatus();
+    episodeMsgEl.textContent = "Session started.";
+  } catch (err) {
+    episodeMsgEl.textContent = `Session error: ${err.message}`;
+  }
+});
+
+startEpisodeBtn.addEventListener("click", async () => {
+  try {
+    const data = await apiRequest("/api/episode/start", { method: "POST", body: "{}" });
+    episodeMsgEl.textContent = `Episode ${data.episode} started.`;
+    await refreshStatus();
+  } catch (err) {
+    episodeMsgEl.textContent = `Start error: ${err.message}`;
+  }
+});
+
+stopEpisodeBtn.addEventListener("click", async () => {
+  try {
+    await apiRequest("/api/episode/stop", { method: "POST", body: "{}" });
+    episodeMsgEl.textContent = "Stop signal sent.";
+    await refreshStatus();
+  } catch (err) {
+    episodeMsgEl.textContent = `Stop error: ${err.message}`;
+  }
+});
+
+refreshEpisodesBtn.addEventListener("click", async () => {
+  try {
+    await apiRequest("/api/episodes");
+    await refreshStatus();
+  } catch (err) {
+    episodeMsgEl.textContent = `Refresh error: ${err.message}`;
+  }
+});
+
+pickRandomBtn.addEventListener("click", async () => {
+  try {
+    const data = await apiRequest("/api/episode/random", { method: "POST", body: "{}" });
+    randomMsgEl.textContent = `Selected episode ${data.episode}.`;
+    await refreshStatus();
+  } catch (err) {
+    randomMsgEl.textContent = `Random error: ${err.message}`;
+  }
+});
+
+prepareReplayBtn.addEventListener("click", async () => {
+  try {
+    const data = await apiRequest("/api/replay/prepare", { method: "POST", body: "{}" });
+    replayMsgEl.textContent = `Prepared replay for episode ${data.replay.episode}.`;
+    await refreshStatus();
+  } catch (err) {
+    replayMsgEl.textContent = `Replay error: ${err.message}`;
+  }
+});
+
+refreshStatus();
+setInterval(refreshStatus, 2500);
