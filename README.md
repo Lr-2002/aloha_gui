@@ -24,12 +24,14 @@ Edit `config.json`:
 - `collect_script`: full path to `collect_data.py`
 - `collect_workdir`: directory to run the command from
 - `collect_shell_template` (optional): a full shell command with placeholders
+- `collect_max_timesteps`: max steps per episode (`-1` for no limit)
 
 Example shell template matching the default AgileX image paths (conda + ROS):
 
 ```json
 {
-  "collect_shell_template": "source ~/miniconda3/etc/profile.d/conda.sh && conda activate aloha && source /opt/ros/noetic/setup.bash && source ~/cobot_magic/Piper_ros_private-ros-noetic/devel/setup.bash && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
+  "collect_max_timesteps": -1,
+  "collect_shell_template": "source ~/miniconda3/etc/profile.d/conda.sh && conda activate aloha && source /opt/ros/noetic/setup.bash && source ~/cobot_magic/Piper_ros_private-ros-noetic/devel/setup.bash && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx} --max_timesteps {max_timesteps}"
 }
 ```
 

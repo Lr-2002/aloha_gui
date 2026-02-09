@@ -36,6 +36,7 @@ def load_config():
         "collect_workdir": "",
         "collect_extra_args": [],
         "collect_shell_template": "",
+        "collect_max_timesteps": 500,
         "replay_shell_template": "",
         "auto_start_stack": True,
         "require_sudo_password": False,
@@ -310,6 +311,7 @@ def build_collect_command(dataset_dir, task_name, episode_idx):
             episode_idx=episode_idx,
             python=CONFIG.get("python_bin", "python3"),
             collect_script=CONFIG.get("collect_script", ""),
+            max_timesteps=CONFIG.get("collect_max_timesteps", ""),
         )
         return ["bash", "-lc", cmd]
     if not CONFIG.get("collect_script"):
@@ -324,6 +326,9 @@ def build_collect_command(dataset_dir, task_name, episode_idx):
         "--episode_idx",
         str(episode_idx),
     ]
+    max_steps = CONFIG.get("collect_max_timesteps", None)
+    if max_steps is not None and str(max_steps) != "":
+        cmd.extend(["--max_timesteps", str(max_steps)])
     extra = CONFIG.get("collect_extra_args") or []
     cmd.extend(extra)
     return cmd

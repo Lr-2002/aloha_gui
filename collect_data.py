@@ -309,8 +309,9 @@ class RosOperator:
         rate = rospy.Rate(self.args.frame_rate)
         print_flag = True
 
+        max_steps = int(self.args.max_timesteps)
         try:
-            while (count < self.args.max_timesteps + 1) and not rospy.is_shutdown():
+            while (max_steps <= 0 or count < max_steps + 1) and not rospy.is_shutdown():
                 # 2 收集数据
                 result = self.get_frame()
                 if not result:
