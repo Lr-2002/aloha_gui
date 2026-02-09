@@ -125,6 +125,20 @@ Why reboot sometimes “fixes” it:
 
 If master topics have no data, the server can kill the master publishers and restart the arm launch (see `master_topics` and `auto_restart_master`).
 
+## Operator flow (per doc)
+
+This maps the doc's manual steps to the web UI:
+
+1) Start the stack once at the beginning of a session.
+   - UI: `Start Stack`
+   - Runs: `roscore` (if not running), `can_config.sh`, `roslaunch piper ...`, `roslaunch astra_camera ...`
+   - Keep this running; it owns the ROS nodes.
+2) Start data collection after the stack is up.
+   - UI: `Start Next Episode`
+   - Runs: `collect_data.py` inside `conda activate aloha`
+3) If you unplug CAN devices, re-run `can_config.sh` by stopping/starting the stack.
+   - UI: `Stop Stack` then `Start Stack`
+
 3) Run the server
 
 ```bash
