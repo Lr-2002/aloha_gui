@@ -25,11 +25,11 @@ Edit `config.json`:
 - `collect_workdir`: directory to run the command from
 - `collect_shell_template` (optional): a full shell command with placeholders
 
-Example shell template matching the default AgileX image paths:
+Example shell template matching the default AgileX image paths (ROS + conda):
 
 ```json
 {
-  "collect_shell_template": "source /opt/ros/noetic/setup.bash && source ~/cobot_magic/Piper_ros_private-ros-noetic/devel/setup.bash && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
+  "collect_shell_template": "source /opt/ros/noetic/setup.bash && source ~/cobot_magic/Piper_ros_private-ros-noetic/devel/setup.bash && source ~/miniconda3/etc/profile.d/conda.sh && conda activate aloha && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
 }
 ```
 
