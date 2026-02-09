@@ -25,11 +25,11 @@ Edit `config.json`:
 - `collect_workdir`: directory to run the command from
 - `collect_shell_template` (optional): a full shell command with placeholders
 
-Example shell template when you must source ROS:
+Example shell template matching the default AgileX image paths:
 
 ```json
 {
-  "collect_shell_template": "source /opt/ros/noetic/setup.bash && source ~/cobot_magic/aloha-devel/devel/setup.bash && python ~/cobot_magic/aloha-devel/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
+  "collect_shell_template": "source /opt/ros/noetic/setup.bash && source ~/cobot_magic/aloha-devel/devel/setup.bash && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
 }
 ```
 
