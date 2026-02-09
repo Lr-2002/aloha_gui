@@ -34,6 +34,14 @@ def load_config():
         "collect_extra_args": [],
         "collect_shell_template": "",
         "replay_shell_template": "",
+        "auto_start_stack": True,
+        "stack_workdir": "",
+        "roscore_cmd": "",
+        "arm_launch_cmd": "",
+        "camera_launch_cmd": "",
+        "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
+        "required_topics": [],
+        "stack_start_delay": 0,
         "tail_lines": 200,
     }
     config_path = APP_ROOT / "config.json"
@@ -53,7 +61,12 @@ def load_config():
     for env_key, cfg_key in env_map.items():
         if env_key in os.environ:
             cfg[cfg_key] = os.environ[env_key]
-    for path_key in ("data_root", "collect_script", "collect_workdir"):
+    for path_key in (
+        "data_root",
+        "collect_script",
+        "collect_workdir",
+        "stack_workdir",
+    ):
         value = cfg.get(path_key)
         if value:
             cfg[path_key] = expand_path(value)
@@ -77,12 +90,27 @@ STATE = {
     "episodes": [],
     "selected_episode": None,
     "last_replay": None,
+    "stack_running": False,
+    "stack_processes": {},
+    "stack_log": deque(maxlen=TAIL_LINES),
+    "topic_status": {
+        "required": [],
+        "present": [],
+        "missing": [],
+        "last_check": None,
+        "error": None,
+    },
 }
 
 
 def add_log_line(line):
     with STATE_LOCK:
         STATE["last_log"].append(line)
+
+
+def add_stack_log_line(line):
+    with STATE_LOCK:
+        STATE["stack_log"].append(line)
 
 
 def sanitize_token(value):
@@ -221,6 +249,165 @@ class EpisodeRunner:
 
 RUNNER = EpisodeRunner()
 
+
+class StackRunner:
+    def __init__(self):
+        self.processes = {}
+
+    def start(self, name, cmd, workdir, log_path):
+        if name in self.processes and self.processes[name].poll() is None:
+            return False
+        ensure_dir(log_path.parent)
+        log_file = log_path.open("w", encoding="utf-8")
+        proc = subprocess.Popen(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=workdir or None,
+            text=True,
+            bufsize=1,
+            env=os.environ.copy(),
+        )
+        self.processes[name] = proc
+
+        def _reader():
+            with log_file:
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    add_stack_log_line(f"[{name}] {line}")
+                    log_file.write(line + "\n")
+            proc.wait()
+            with STATE_LOCK:
+                proc_state = STATE["stack_processes"].get(name, {})
+                proc_state["running"] = False
+                proc_state["exit_code"] = proc.returncode
+                STATE["stack_processes"][name] = proc_state
+                STATE["stack_running"] = any(
+                    p.poll() is None for p in self.processes.values()
+                )
+            add_stack_log_line(f"[{name}] exited with code {proc.returncode}")
+
+        thread = threading.Thread(target=_reader, daemon=True)
+        thread.start()
+        return True
+
+    def stop_all(self):
+        stopped = False
+        for proc in list(self.processes.values()):
+            if proc and proc.poll() is None:
+                try:
+                    proc.send_signal(signal.SIGINT)
+                    stopped = True
+                except Exception:
+                    continue
+        return stopped
+
+
+STACK = StackRunner()
+
+
+def stack_commands():
+    return {
+        "roscore": CONFIG.get("roscore_cmd", ""),
+        "arm": CONFIG.get("arm_launch_cmd", ""),
+        "camera": CONFIG.get("camera_launch_cmd", ""),
+    }
+
+
+def stack_logs_dir(session):
+    if session:
+        return Path(session["dataset_dir"]) / ".meta" / "logs"
+    return APP_ROOT / ".stack_logs"
+
+
+def ensure_stack_running():
+    with STATE_LOCK:
+        if STATE["stack_running"]:
+            return True, None
+    cmds = stack_commands()
+    if not any(cmds.values()):
+        add_stack_log_line("[error] stack_not_configured")
+        return False, "stack_not_configured"
+    workdir = CONFIG.get("stack_workdir") or None
+    if workdir and not Path(workdir).exists():
+        add_stack_log_line(f"[error] stack_workdir_missing: {workdir}")
+        return False, "stack_workdir_missing"
+    with STATE_LOCK:
+        STATE["stack_processes"] = {}
+        STATE["stack_log"].clear()
+        STATE["stack_running"] = True
+    session = STATE["session"]
+    logs_dir = stack_logs_dir(session)
+    ensure_dir(logs_dir)
+    delay = float(CONFIG.get("stack_start_delay", 0) or 0)
+
+    def _start_named(name):
+        cmd = cmds.get(name)
+        if not cmd:
+            return
+        with STATE_LOCK:
+            STATE["stack_processes"][name] = {
+                "cmd": cmd,
+                "running": True,
+                "exit_code": None,
+            }
+        log_path = logs_dir / f"stack_{name}.log"
+        started = STACK.start(name, cmd, workdir, log_path)
+        if not started:
+            add_stack_log_line(f"[warn] {name} already running")
+
+    _start_named("roscore")
+    if delay > 0:
+        time.sleep(delay)
+    _start_named("arm")
+    if delay > 0:
+        time.sleep(delay)
+    _start_named("camera")
+    with STATE_LOCK:
+        STATE["stack_running"] = any(
+            p.poll() is None for p in STACK.processes.values()
+        )
+    return True, None
+
+
+def run_topic_check():
+    cmd = CONFIG.get("topic_check_cmd")
+    required = CONFIG.get("required_topics") or []
+    if not cmd:
+        return {
+            "required": required,
+            "present": [],
+            "missing": required,
+            "last_check": now_iso(),
+            "error": "topic_check_not_configured",
+        }
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        output = result.stdout.splitlines()
+        present = sorted(set(t for t in output if t.startswith("/")))
+        missing = [t for t in required if t not in present]
+        return {
+            "required": required,
+            "present": present,
+            "missing": missing,
+            "last_check": now_iso(),
+            "error": None if result.returncode == 0 else result.stderr.strip(),
+        }
+    except Exception as exc:
+        return {
+            "required": required,
+            "present": [],
+            "missing": required,
+            "last_check": now_iso(),
+            "error": str(exc),
+        }
+
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 
@@ -252,6 +439,10 @@ def api_status():
             "selected_episode": STATE["selected_episode"],
             "last_replay": STATE["last_replay"],
             "last_log": list(STATE["last_log"]),
+            "stack_running": STATE["stack_running"],
+            "stack_processes": STATE["stack_processes"],
+            "stack_log": list(STATE["stack_log"]),
+            "topic_status": STATE["topic_status"],
         }
     data["data_root"] = DATA_ROOT
     data["collect_configured"] = bool(
@@ -306,6 +497,16 @@ def api_episode_start():
     if running:
         add_log_line("[error] already_running")
         return jsonify({"ok": False, "error": "already_running"}), 409
+    if CONFIG.get("auto_start_stack", False):
+        ok, err = ensure_stack_running()
+        if not ok:
+            return jsonify({"ok": False, "error": err}), 400
+        status = run_topic_check()
+        with STATE_LOCK:
+            STATE["topic_status"] = status
+        if status.get("missing"):
+            add_log_line(f"[error] topics_missing: {', '.join(status['missing'])}")
+            return jsonify({"ok": False, "error": "topics_missing"}), 400
     cmd = build_collect_command(
         session["dataset_dir"], session["task"], next_episode
     )
@@ -374,6 +575,35 @@ def api_episode_stop():
                 return jsonify({"ok": True, "note": "state_reset"})
         return jsonify({"ok": False, "error": "no_running_process"}), 409
     return jsonify({"ok": True, "note": "signal_sent"})
+
+
+@app.route("/api/stack/start", methods=["POST"])
+def api_stack_start():
+    ok, err = ensure_stack_running()
+    if not ok:
+        return jsonify({"ok": False, "error": err}), 400
+    return jsonify({"ok": True})
+
+
+@app.route("/api/stack/stop", methods=["POST"])
+def api_stack_stop():
+    stopped = STACK.stop_all()
+    with STATE_LOCK:
+        STATE["stack_running"] = False
+        for name, proc_state in STATE["stack_processes"].items():
+            proc_state["running"] = False
+    if not stopped:
+        return jsonify({"ok": False, "error": "stack_not_running"}), 409
+    add_stack_log_line("[info] stop signal sent to stack")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/topics/check", methods=["POST"])
+def api_topics_check():
+    status = run_topic_check()
+    with STATE_LOCK:
+        STATE["topic_status"] = status
+    return jsonify({"ok": True, "status": status})
 
 
 @app.route("/api/episodes", methods=["GET"])

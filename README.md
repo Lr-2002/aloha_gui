@@ -33,6 +33,27 @@ Example shell template matching the default AgileX image paths (ROS + conda):
 }
 ```
 
+System stack (auto-start ROS + arm + camera) is configurable via:
+
+- `roscore_cmd`
+- `arm_launch_cmd`
+- `camera_launch_cmd`
+- `topic_check_cmd`
+- `required_topics`
+
+If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
+
+Default `arm_launch_cmd` and `camera_launch_cmd` in `config.example.json` match the doc:
+
+- Arm: `bash can_config.sh` + `roslaunch piper start_ms_piper.launch mode:=0 auto_enable:=false`
+- Camera: `roslaunch astra_camera multi_camera.launch`
+
+If you use RealSense, replace `camera_launch_cmd` with:
+
+```
+cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch realsense2_camera multi_camera.launch
+```
+
 3) Run the server
 
 ```bash

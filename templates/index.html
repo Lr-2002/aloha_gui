@@ -57,6 +57,25 @@
         </section>
 
         <section class="card">
+          <h2>System Stack</h2>
+          <p class="muted">Start ROS core, arm, and camera from config.</p>
+          <div class="status-row">
+            <span class="label">Stack State</span>
+            <span class="value" id="stack-state">-</span>
+          </div>
+          <div class="status-row">
+            <span class="label">Processes</span>
+            <span class="value mono" id="stack-list">-</span>
+          </div>
+          <div class="button-row">
+            <button id="start-stack" class="primary">Start Stack</button>
+            <button id="stop-stack" class="ghost">Stop Stack</button>
+            <button id="check-topics" class="ghost">Check Topics</button>
+          </div>
+          <p class="hint" id="topic-msg">No topic check yet.</p>
+        </section>
+
+        <section class="card">
           <h2>Episode Control</h2>
           <p class="muted">Click to capture the next episode. One episode at a time.</p>
           <div class="status-row">
@@ -100,6 +119,12 @@
           <h2>Live Log Tail</h2>
           <p class="muted">Latest collector output (tail).</p>
           <pre id="log-output">No output yet.</pre>
+        </section>
+
+        <section class="card log-card">
+          <h2>Stack Log Tail</h2>
+          <p class="muted">Latest ROS/launch output (tail).</p>
+          <pre id="stack-log-output">No output yet.</pre>
         </section>
       </main>
     </div>

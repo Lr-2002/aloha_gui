@@ -10,6 +10,10 @@ const randomMsgEl = document.getElementById("random-msg");
 const selectedEpisodeEl = document.getElementById("selected-episode");
 const replayMsgEl = document.getElementById("replay-msg");
 const logOutputEl = document.getElementById("log-output");
+const stackStateEl = document.getElementById("stack-state");
+const stackListEl = document.getElementById("stack-list");
+const topicMsgEl = document.getElementById("topic-msg");
+const stackLogOutputEl = document.getElementById("stack-log-output");
 
 const userInput = document.getElementById("user-id");
 const taskInput = document.getElementById("task-name");
@@ -20,6 +24,9 @@ const stopEpisodeBtn = document.getElementById("stop-episode");
 const refreshEpisodesBtn = document.getElementById("refresh-episodes");
 const pickRandomBtn = document.getElementById("pick-random");
 const prepareReplayBtn = document.getElementById("prepare-replay");
+const startStackBtn = document.getElementById("start-stack");
+const stopStackBtn = document.getElementById("stop-stack");
+const checkTopicsBtn = document.getElementById("check-topics");
 
 let lastStatus = null;
 
@@ -89,6 +96,31 @@ function updateUI(data) {
 
   const logLines = data.last_log || [];
   logOutputEl.textContent = logLines.length ? logLines.join("\n") : "No output yet.";
+
+  const stackRunning = data.stack_running;
+  stackStateEl.textContent = stackRunning ? "running" : "idle";
+  const processes = data.stack_processes || {};
+  const list = Object.keys(processes).length
+    ? Object.entries(processes)
+        .map(([name, info]) => `${name}:${info.running ? "on" : "off"}`)
+        .join(" ")
+    : "-";
+  stackListEl.textContent = list;
+
+  const topicStatus = data.topic_status || {};
+  if (topicStatus.last_check) {
+    const missing = topicStatus.missing || [];
+    topicMsgEl.textContent = missing.length
+      ? `Missing topics: ${missing.join(", ")}`
+      : "All required topics present.";
+  } else {
+    topicMsgEl.textContent = "No topic check yet.";
+  }
+
+  const stackLogLines = data.stack_log || [];
+  stackLogOutputEl.textContent = stackLogLines.length
+    ? stackLogLines.join("\n")
+    : "No output yet.";
 }
 
 async function refreshStatus() {
@@ -165,6 +197,35 @@ prepareReplayBtn.addEventListener("click", async () => {
     await refreshStatus();
   } catch (err) {
     replayMsgEl.textContent = `Replay error: ${err.message}`;
+  }
+});
+
+startStackBtn.addEventListener("click", async () => {
+  try {
+    await apiRequest("/api/stack/start", { method: "POST", body: "{}" });
+    await refreshStatus();
+    topicMsgEl.textContent = "Stack started.";
+  } catch (err) {
+    topicMsgEl.textContent = `Stack error: ${err.message}`;
+  }
+});
+
+stopStackBtn.addEventListener("click", async () => {
+  try {
+    await apiRequest("/api/stack/stop", { method: "POST", body: "{}" });
+    await refreshStatus();
+    topicMsgEl.textContent = "Stop signal sent.";
+  } catch (err) {
+    topicMsgEl.textContent = `Stop error: ${err.message}`;
+  }
+});
+
+checkTopicsBtn.addEventListener("click", async () => {
+  try {
+    await apiRequest("/api/topics/check", { method: "POST", body: "{}" });
+    await refreshStatus();
+  } catch (err) {
+    topicMsgEl.textContent = `Check error: ${err.message}`;
   }
 });
 
