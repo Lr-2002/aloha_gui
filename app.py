@@ -497,8 +497,15 @@ def ensure_stack_running():
             if dep_required:
                 return False, "arm_dep_check_failed"
         elif dep_result.returncode != 0:
-            msg = dep_result.stderr.strip() or dep_result.stdout.strip() or "failed"
-            add_stack_log_line(f"[error] arm_dep_check_failed: {msg}")
+            add_stack_log_line("[error] arm_dep_check_failed")
+            if dep_result.stdout.strip():
+                add_stack_log_line(
+                    f"[error] arm_dep_check_stdout: {dep_result.stdout.strip()}"
+                )
+            if dep_result.stderr.strip():
+                add_stack_log_line(
+                    f"[error] arm_dep_check_stderr: {dep_result.stderr.strip()}"
+                )
             if dep_required:
                 return False, "arm_dep_check_failed"
         else:

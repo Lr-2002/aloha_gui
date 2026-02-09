@@ -102,6 +102,7 @@ Common issues tied to the doc steps:
     sudo apt-get update
     sudo apt-get install -y python3-yaml
     source /opt/ros/noetic/setup.bash
+    which python3
     python3 -c "import yaml; print('yaml ok')"
     ```
   - If the error persists but `yaml ok` works in another terminal, ensure `stack_clean_env=true` so ROS launches with system Python.
