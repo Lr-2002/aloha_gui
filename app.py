@@ -55,6 +55,7 @@ def load_config():
         "topic_echo_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic echo -n 1 {topic}",
         "topic_echo_timeout": 2,
         "require_topic_messages": True,
+        "topic_data_ignore": [],
         "roscore_check_cmd": "",
         "topic_info_cmd": "source /opt/ros/noetic/setup.bash && timeout {timeout}s rostopic info {topic}",
         "topic_info_timeout": 2,
@@ -504,14 +505,19 @@ def run_topic_check(with_data=None):
             missing_optional_data = []
             if with_data and not missing:
                 timeout = int(CONFIG.get("topic_echo_timeout", 2) or 2)
+                ignore = set(CONFIG.get("topic_data_ignore") or [])
                 for topic in required:
                     if topic not in present:
+                        continue
+                    if topic in ignore:
                         continue
                     ok, _ = topic_has_data(topic, timeout)
                     if not ok:
                         missing_data.append(topic)
                 for topic in optional:
                     if topic not in present:
+                        continue
+                    if topic in ignore:
                         continue
                     ok, _ = topic_has_data(topic, timeout)
                     if not ok:

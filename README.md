@@ -25,11 +25,11 @@ Edit `config.json`:
 - `collect_workdir`: directory to run the command from
 - `collect_shell_template` (optional): a full shell command with placeholders
 
-Example shell template matching the default AgileX image paths (ROS + conda):
+Example shell template matching the default AgileX image paths (conda + ROS):
 
 ```json
 {
-  "collect_shell_template": "source /opt/ros/noetic/setup.bash && source ~/cobot_magic/Piper_ros_private-ros-noetic/devel/setup.bash && source ~/miniconda3/etc/profile.d/conda.sh && conda activate aloha && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
+  "collect_shell_template": "source ~/miniconda3/etc/profile.d/conda.sh && conda activate aloha && source /opt/ros/noetic/setup.bash && source ~/cobot_magic/Piper_ros_private-ros-noetic/devel/setup.bash && python ~/cobot_magic/collect_data/collect_data.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx}"
 }
 ```
 
@@ -74,10 +74,10 @@ Default `arm_launch_cmd` and `camera_launch_cmd` in `config.example.json` match 
 If you use RealSense, replace `camera_launch_cmd` with:
 
 ```
-cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch realsense2_camera multi_camera.launch
+source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch realsense2_camera multi_camera.launch
 ```
 
-`optional_topics` is empty by default. If you need base or depth topics, add them there so missing sensors won't block capture.
+`optional_topics` contains depth/camera-info/base topics from the doc. Move them into `required_topics` if you want to block capture when they are missing.
 
 If master topics have no data, the server can kill the master publishers and restart the arm launch (see `master_topics` and `auto_restart_master`).
 
