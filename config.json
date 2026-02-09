@@ -1,8 +1,8 @@
 {
   "data_root": "~/data",
   "python_bin": "python3",
-  "collect_script": "/home/robot/cobot_magic/collect_data/collect_data.py",
-  "collect_workdir": "/home/robot/cobot_magic/collect_data",
+  "collect_script": "~/cobot_magic/collect_data/collect_data.py",
+  "collect_workdir": "~/cobot_magic/collect_data",
   "collect_extra_args": [],
   "collect_shell_template": "",
   "replay_shell_template": "",
