@@ -76,6 +76,11 @@ STATE = {
 }
 
 
+def add_log_line(line):
+    with STATE_LOCK:
+        STATE["last_log"].append(line)
+
+
 def sanitize_token(value):
     if not value:
         return ""
@@ -292,19 +297,23 @@ def api_episode_start():
         running = STATE["running"]
         next_episode = STATE["next_episode"]
     if not session:
+        add_log_line("[error] no_session")
         return jsonify({"ok": False, "error": "no_session"}), 400
     if running:
+        add_log_line("[error] already_running")
         return jsonify({"ok": False, "error": "already_running"}), 409
     cmd = build_collect_command(
         session["dataset_dir"], session["task"], next_episode
     )
     if not cmd:
+        add_log_line("[error] collect_not_configured")
         return jsonify({"ok": False, "error": "collect_not_configured"}), 400
     dataset_dir = Path(session["dataset_dir"])
     meta_dir = dataset_dir / ".meta"
     log_path = meta_dir / "logs" / f"episode_{next_episode}.log"
     workdir = CONFIG.get("collect_workdir") or None
     if workdir and not Path(workdir).exists():
+        add_log_line(f"[error] collect_workdir_missing: {workdir}")
         return (
             jsonify({"ok": False, "error": "collect_workdir_missing", "path": workdir}),
             400,
@@ -322,6 +331,7 @@ def api_episode_start():
     try:
         RUNNER.start(cmd, workdir, log_path, meta_dir, dataset_dir, next_episode)
     except FileNotFoundError as exc:
+        add_log_line(f"[error] collect_launch_failed: {exc}")
         with STATE_LOCK:
             STATE["running"] = False
             STATE["current_episode"] = None
@@ -332,6 +342,7 @@ def api_episode_start():
             500,
         )
     except OSError as exc:
+        add_log_line(f"[error] collect_launch_failed: {exc}")
         with STATE_LOCK:
             STATE["running"] = False
             STATE["current_episode"] = None
@@ -355,6 +366,7 @@ def api_episode_stop():
                 STATE["running"] = False
                 STATE["current_episode"] = None
                 STATE["last_error"] = "no_running_process"
+                add_log_line("[warn] stop called with no process; state reset")
                 return jsonify({"ok": True, "note": "state_reset"})
         return jsonify({"ok": False, "error": "no_running_process"}), 409
     return jsonify({"ok": True, "note": "signal_sent"})
