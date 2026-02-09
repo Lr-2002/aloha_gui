@@ -53,6 +53,10 @@ def load_config():
     for env_key, cfg_key in env_map.items():
         if env_key in os.environ:
             cfg[cfg_key] = os.environ[env_key]
+    for path_key in ("data_root", "collect_script", "collect_workdir"):
+        value = cfg.get(path_key)
+        if value:
+            cfg[path_key] = expand_path(value)
     return cfg
 
 
