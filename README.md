@@ -106,6 +106,18 @@ Common issues tied to the doc steps:
     python3 -c "import yaml; print('yaml ok')"
     ```
   - If the error persists but `yaml ok` works in another terminal, ensure `stack_clean_env=true` so ROS launches with system Python.
+- `ModuleNotFoundError: No module named 'piper_sdk'` while starting arm
+  - Cause: `piper_sdk` is not visible to system Python used by ROS.
+  - Fix (check where it lives):
+    ```bash
+    source /opt/ros/noetic/setup.bash
+    python3 -c "import importlib.util as u; print(u.find_spec('piper_sdk'))"
+    ```
+  - If it exists under `~/cobot_magic/Piper_ros_private-ros-noetic/src/piper_sdk`, add:
+    ```bash
+    export PYTHONPATH=~/cobot_magic/Piper_ros_private-ros-noetic/src:$PYTHONPATH
+    ```
+    and re-run the stack, or bake it into `arm_launch_cmd`.
 - `roscore cannot run as another roscore/master is already running`
   - Cause: A stale ROS master is already running.
   - Fix: kill the existing `roscore` or reboot as a last resort.
