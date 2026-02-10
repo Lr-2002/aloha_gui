@@ -89,6 +89,24 @@ The UI manages three registries stored under `registry/`:
 You can add users/tasks in the UI or import JSON arrays.
 CSV import is supported in the UI; see `EXAMPLE.CSV` for tasks format.
 
+## Storage layout
+
+Metadata:
+
+- `registry/users.json`: user list (`id`, `name`)
+- `registry/tasks.json`: task list (`id`, `name`, `description`, `success_criteria`)
+- `registry/interfaces.json`: interface list (`id`, `name`, `type`)
+- `registry/episodes.jsonl`: global episode events (`start`, `stop_requested`, `end`)
+
+Per-session data (created under `data_root`):
+
+- `~/data/<user_id>/<task_id>/` (or your `data_root`)
+  - `episode_<n>/` (raw trajectory data produced by `collect_data.py`)
+  - `.meta/session.json` (session fields incl. `interface_id`, `user_id`, `task_id`)
+  - `.meta/episodes.jsonl` (start/end timestamps per episode)
+  - `.meta/logs/episode_<n>.log` (collector stdout)
+  - `.meta/logs/stack_*.log` (ROS/launch logs)
+
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 
 Default `arm_dep_check_cmd`, `arm_pre_cmd`, `arm_launch_cmd` and `camera_launch_cmd` in `config.example.json` match the doc:
