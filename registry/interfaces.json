@@ -1,0 +1,9 @@
+[
+  {
+    "id": "aloha",
+    "name": "Aloha",
+    "type": "aloha",
+    "description": "Aloha data collection interface.",
+    "config_path": "interfaces/aloha.json"
+  }
+]

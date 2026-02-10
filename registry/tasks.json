@@ -1,0 +1,26 @@
+[
+  {
+    "id": "insert-peg-92668-482",
+    "name": "Insert Peg",
+    "description": "Insert a peg into a matching hole.",
+    "success_criteria": "Peg fully inserted and stable."
+  },
+  {
+    "id": "pick-and-place-92668-490",
+    "name": "Pick and Place",
+    "description": "Pick a single object and place it in a target zone.",
+    "success_criteria": "Object ends inside target zone without drop."
+  },
+  {
+    "id": "stack-blocks-92668-991",
+    "name": "Stack Blocks",
+    "description": "Stack multiple blocks into a stable tower.",
+    "success_criteria": "All blocks stacked without collapse."
+  },
+  {
+    "id": "plug-connector-92668-418",
+    "name": "Plug Connector",
+    "description": "Align and plug a connector into a socket.",
+    "success_criteria": "Connector fully seated and aligned."
+  }
+]
