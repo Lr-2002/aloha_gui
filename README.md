@@ -171,7 +171,7 @@ CPH can be computed from `.meta/episodes.jsonl` (per task) or `registry/episodes
 
 ## Operator flow (Pika)
 
-1) Make sure `pika_sdk` dependencies are installed (see `third_party/pika_sdk/requirements.txt`).
+1) Make sure the `pika_sdk` conda env has `opencv-python` and `numpy` (and SDK deps).
 2) Connect Pika Sense device and cameras.
 3) Start the web UI.
 4) Select **Pika** interface, user, task.
