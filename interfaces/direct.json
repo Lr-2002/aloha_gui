@@ -1,6 +1,7 @@
 {
   "auto_start_stack": true,
   "require_sudo_password": true,
+  "stack_shell_login": false,
   "roscore_cmd": "source /opt/ros/noetic/setup.bash && roscore",
   "camera_launch_cmd": "source /opt/ros/noetic/setup.bash && roslaunch astra_camera multi_camera_yann.launch",
   "camera_cleanup_skip_if_topics_present": true,
@@ -13,5 +14,5 @@
   "arm_pre_cmd": "source /opt/ros/noetic/setup.bash && cd /home/agilex/cobot_magic/Piper_ros_private-ros-noetic && printf '%s\\n' \"$SUDO_PASSWORD\" | sudo -S bash can_muti_activate.sh",
   "arm_launch_cmd": "source /opt/ros/noetic/setup.bash && cd /home/agilex/cobot_magic/Piper_ros_private-ros-noetic && source devel/setup.bash && roslaunch piper start_ms_piper_yann.launch mode:=0 auto_enable:=false",
   "topic_check_on_start": false,
-  "collect_shell_template": "python /home/agilex/cobot_magic/collect.py --root {dataset_dir} --task {task_name}"
+  "collect_shell_template": "python /home/agilex/cobot_magic/teleop/collect.py --root {dataset_dir} --task {task_name}"
 }

@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import signal
 import sys
 import time
 from pathlib import Path
 
 
-def add_sdk_path():
+def add_sdk_path(sdk_root=None):
+    if sdk_root:
+        path = Path(sdk_root).expanduser()
+        if path.exists():
+            sys.path.insert(0, str(path))
+            return
     sdk_root = Path(__file__).resolve().parent / "third_party" / "pika_sdk"
     if sdk_root.exists():
         sys.path.insert(0, str(sdk_root))
 
 
-def load_sense_class():
-    add_sdk_path()
+def load_sense_class(sdk_root=None):
+    add_sdk_path(sdk_root)
     try:
         from pika import sense as SenseClass
 
@@ -40,6 +46,7 @@ def parse_args():
     parser.add_argument("--task_name", default="")
     parser.add_argument("--episode_idx", type=int, default=0)
     parser.add_argument("--max_timesteps", type=int, default=-1)
+    parser.add_argument("--sdk_root", default="")
     parser.add_argument("--root", default="")
     parser.add_argument("--task", default="")
     parser.add_argument("--port", default="/dev/ttyUSB0")
@@ -75,17 +82,18 @@ def load_device_config(path):
         raise FileNotFoundError(f"Config not found: {cfg_path}")
     data = json.loads(cfg_path.read_text(encoding="utf-8"))
     if isinstance(data, list):
-        return data, {}
+        return data, {}, {}
     if isinstance(data, dict):
-        return data.get("devices") or [], data.get("defaults") or {}
-    return [], {}
+        extras = dict(data)
+        extras.pop("devices", None)
+        extras.pop("defaults", None)
+        return data.get("devices") or [], data.get("defaults") or {}, extras
+    return [], {}, {}
 
 
-def build_devices(args):
-    defaults = {}
-    devices = []
-    if args.config:
-        devices, defaults = load_device_config(args.config)
+def build_devices(args, devices=None, defaults=None):
+    defaults = defaults or {}
+    devices = devices or []
     if not devices:
         devices = [{}]
     output = []
@@ -135,12 +143,17 @@ def main():
         print(f"[error] missing dependencies: {exc}")
         return 1
 
-    devices = build_devices(args)
+    devices_cfg = []
+    defaults_cfg = {}
+    extras = {}
+    if args.config:
+        devices_cfg, defaults_cfg, extras = load_device_config(args.config)
+    sdk_root = args.sdk_root or extras.get("sdk_root") or os.environ.get("PIKA_SDK_ROOT")
+    SenseClass = load_sense_class(sdk_root)
+    devices = build_devices(args, devices_cfg, defaults_cfg)
     if not devices:
         print("[error] no devices configured")
         return 1
-
-    SenseClass = load_sense_class()
     active = []
     for device in devices:
         sense = SenseClass(device["port"]) if device["port"] else SenseClass()

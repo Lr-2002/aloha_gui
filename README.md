@@ -66,6 +66,7 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `require_sudo_password`
 - `stack_clean_env`
 - `stack_env_path`
+- `stack_shell_login`
 - `stack_python_bin`
 - `stack_pythonpath`
 - `stack_pythonpath_auto`
@@ -88,6 +89,7 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `auto_restart_master`
 - `master_restart_retries`
 - `master_restart_delay`
+- `collect_shell_login`
 - `camera_cleanup_nodes`
 - `camera_cleanup_process_patterns`
 - `camera_cleanup_retries`
@@ -185,6 +187,7 @@ Pika data is saved under `episode_<n>/` with:
 
 Pika devices are configured in `interfaces/pika_devices.json`:
 
+- set `sdk_root` to your Pika SDK path (e.g. `/home/agilex/pika_ws/pika_sdk`) or export `PIKA_SDK_ROOT`
 - set `port` for each Pika Sense device (`/dev/ttyUSB0`, `/dev/ttyUSB1`, ...)
 - set `fisheye_index` and `realsense_serial`
 - set `tracker_id` (`WM0`, `WM1`, ...)

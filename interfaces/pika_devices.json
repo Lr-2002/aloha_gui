@@ -1,4 +1,5 @@
 {
+  "sdk_root": "/home/agilex/pika_ws/pika_sdk",
   "defaults": {
     "width": 640,
     "height": 480,

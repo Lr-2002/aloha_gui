@@ -434,6 +434,7 @@ def load_config():
         "stack_workdir": "",
         "stack_clean_env": False,
         "stack_env_path": "",
+        "stack_shell_login": True,
         "stack_python_bin": "",
         "stack_pythonpath": "",
         "stack_pythonpath_auto": False,
@@ -475,6 +476,7 @@ def load_config():
         "topic_check_delay": 0,
         "stack_start_delay": 0,
         "tail_lines": 200,
+        "collect_shell_login": True,
     }
     config_path = APP_ROOT / "config.json"
     example_path = APP_ROOT / "config.example.json"
@@ -707,10 +709,15 @@ def build_stack_env():
     return env
 
 
-def run_shell(cmd, timeout=None, input_text=None, env=None):
+def shell_args(cmd, login):
+    return ["bash", "-lc" if login else "-c", cmd]
+
+
+def run_shell(cmd, timeout=None, input_text=None, env=None, login=None):
+    use_login = bool(CONFIG.get("stack_shell_login", True)) if login is None else login
     try:
         return subprocess.run(
-            ["bash", "-lc", cmd],
+            shell_args(cmd, use_login),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -721,6 +728,10 @@ def run_shell(cmd, timeout=None, input_text=None, env=None):
         )
     except Exception:
         return None
+
+
+def stack_shell_args(cmd):
+    return shell_args(cmd, bool(CONFIG.get("stack_shell_login", True)))
 
 
 def session_paths(user_id, task_name):
@@ -765,7 +776,10 @@ def build_collect_command(dataset_dir, task_name, episode_idx):
             collect_script=CONFIG.get("collect_script", ""),
             max_timesteps=CONFIG.get("collect_max_timesteps", ""),
         )
-        return ["bash", "-lc", cmd]
+        use_login = bool(
+            CONFIG.get("collect_shell_login", CONFIG.get("stack_shell_login", True))
+        )
+        return shell_args(cmd, use_login)
     if not CONFIG.get("collect_script"):
         return None
     cmd = [
@@ -872,7 +886,7 @@ class StackRunner:
         ensure_dir(log_path.parent)
         log_file = log_path.open("w", encoding="utf-8")
         proc = subprocess.Popen(
-            ["bash", "-lc", cmd],
+            stack_shell_args(cmd),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=workdir or None,
@@ -1048,7 +1062,7 @@ def topic_has_data(topic, timeout):
     cmd = cmd_tpl.format(topic=topic, timeout=timeout)
     try:
         result = subprocess.run(
-            ["bash", "-lc", cmd],
+            stack_shell_args(cmd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -1088,7 +1102,7 @@ def run_topic_check(with_data=None):
     for attempt in range(retries):
         try:
             result = subprocess.run(
-                ["bash", "-lc", cmd],
+                stack_shell_args(cmd),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -1157,7 +1171,7 @@ def get_publishers(topic):
     cmd = cmd_tpl.format(topic=topic, timeout=timeout)
     try:
         result = subprocess.run(
-            ["bash", "-lc", cmd],
+            stack_shell_args(cmd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -1191,7 +1205,7 @@ def kill_nodes(nodes):
     joined = " ".join(nodes)
     cmd = cmd_tpl.format(nodes=joined)
     try:
-        subprocess.run(["bash", "-lc", cmd], check=False)
+        subprocess.run(stack_shell_args(cmd), check=False)
         return True
     except Exception:
         return False
@@ -1274,7 +1288,7 @@ def roscore_is_running():
         return False
     try:
         result = subprocess.run(
-            ["bash", "-lc", cmd],
+            stack_shell_args(cmd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -1292,7 +1306,7 @@ def list_rostopics():
         return []
     try:
         result = subprocess.run(
-            ["bash", "-lc", cmd],
+            stack_shell_args(cmd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -1310,7 +1324,7 @@ def list_rosnodes():
         return []
     try:
         result = subprocess.run(
-            ["bash", "-lc", cmd],
+            stack_shell_args(cmd),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -1325,7 +1339,7 @@ def list_rosnodes():
 def list_pids(pattern):
     try:
         result = subprocess.run(
-            ["bash", "-lc", f"pgrep -f {shlex.quote(pattern)}"],
+            stack_shell_args(f"pgrep -f {shlex.quote(pattern)}"),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -1389,7 +1403,7 @@ def cleanup_camera():
         if pre_cmd:
             try:
                 subprocess.run(
-                    ["bash", "-lc", pre_cmd],
+                    stack_shell_args(pre_cmd),
                     check=False,
                     env=base_env,
                 )
@@ -1408,7 +1422,7 @@ def cleanup_camera():
         for pattern in patterns:
             try:
                 subprocess.run(
-                    ["bash", "-lc", f"{sudo_prefix}pkill -f {shlex.quote(pattern)}"],
+                    stack_shell_args(f"{sudo_prefix}pkill -f {shlex.quote(pattern)}"),
                     check=False,
                     env=base_env,
                     input=sudo_input,
@@ -1421,7 +1435,7 @@ def cleanup_camera():
         if extra_cmd:
             try:
                 subprocess.run(
-                    ["bash", "-lc", f"{sudo_prefix}{extra_cmd}"],
+                    stack_shell_args(f"{sudo_prefix}{extra_cmd}"),
                     check=False,
                     env=base_env,
                     input=sudo_input,
