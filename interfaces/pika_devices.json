@@ -15,14 +15,14 @@
       "port": "/dev/ttyUSB0",
       "fisheye_index": 0,
       "realsense_serial": "",
-      "tracker_id": "WM0"
+      "tracker_id": "T20"
     },
     {
       "name": "right",
       "port": "/dev/ttyUSB1",
       "fisheye_index": 1,
       "realsense_serial": "",
-      "tracker_id": "WM1"
+      "tracker_id": "T21"
     }
   ]
 }
