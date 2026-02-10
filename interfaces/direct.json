@@ -5,8 +5,8 @@
   "camera_launch_cmd": "source /opt/ros/noetic/setup.bash && roslaunch astra_camera multi_camera_yann.launch",
   "camera_cleanup_skip_if_topics_present": true,
   "camera_cleanup_skip_topics": [
-    "/camera_f/color/image_raw",
     "/camera_l/color/image_raw",
+    "/camera_r/color/image_raw",
     "/master/joint_left",
     "/master/joint_right"
   ],
