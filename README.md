@@ -66,6 +66,7 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `require_sudo_password`
 - `stack_clean_env`
 - `stack_env_path`
+- `stack_enabled`
 - `stack_shell_login`
 - `stack_python_bin`
 - `stack_pythonpath`

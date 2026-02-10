@@ -38,6 +38,8 @@ const prepareReplayBtn = document.getElementById("prepare-replay");
 const startStackBtn = document.getElementById("start-stack");
 const stopStackBtn = document.getElementById("stop-stack");
 const checkTopicsBtn = document.getElementById("check-topics");
+const stackCardEl = document.getElementById("stack-card");
+const stackLogCardEl = document.getElementById("stack-log-card");
 const copyLiveLogBtn = document.getElementById("copy-live-log");
 const copyStackLogBtn = document.getElementById("copy-stack-log");
 const setSudoBtn = document.getElementById("set-sudo");
@@ -274,6 +276,14 @@ function updateUI(data) {
 
   const logLines = data.last_log || [];
   logOutputEl.textContent = logLines.length ? logLines.join("\n") : "No output yet.";
+
+  const stackEnabled = data.stack_enabled !== false;
+  if (stackCardEl) {
+    stackCardEl.style.display = stackEnabled ? "" : "none";
+  }
+  if (stackLogCardEl) {
+    stackLogCardEl.style.display = stackEnabled ? "" : "none";
+  }
 
   const stackRunning = data.stack_running;
   stackStateEl.textContent = stackRunning ? "running" : "idle";

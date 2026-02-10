@@ -431,6 +431,7 @@ def load_config():
         "interfaces_csv_mode": "replace",
         "auto_start_stack": True,
         "require_sudo_password": False,
+        "stack_enabled": True,
         "stack_workdir": "",
         "stack_clean_env": False,
         "stack_env_path": "",
@@ -1527,6 +1528,7 @@ def api_status():
     data["collect_configured"] = bool(
         CONFIG.get("collect_shell_template") or CONFIG.get("collect_script")
     )
+    data["stack_enabled"] = bool(CONFIG.get("stack_enabled", True))
     data["sudo_ready"] = bool(get_sudo_password())
     return jsonify(data)
 
@@ -1768,7 +1770,7 @@ def api_episode_start():
         add_log_line("[error] already_running")
         return jsonify({"ok": False, "error": "already_running"}), 409
     add_log_line("[info] episode_start_requested")
-    if CONFIG.get("auto_start_stack", False):
+    if CONFIG.get("auto_start_stack", False) and CONFIG.get("stack_enabled", True):
         ok, err = ensure_stack_running()
         if not ok:
             add_log_line(f"[error] stack_start_failed: {err}")
@@ -1916,6 +1918,8 @@ def api_episode_stop():
 
 @app.route("/api/stack/start", methods=["POST"])
 def api_stack_start():
+    if not CONFIG.get("stack_enabled", True):
+        return jsonify({"ok": False, "error": "stack_disabled"}), 400
     ok, err = ensure_stack_running()
     if not ok:
         return jsonify({"ok": False, "error": err}), 400
@@ -1924,6 +1928,8 @@ def api_stack_start():
 
 @app.route("/api/stack/stop", methods=["POST"])
 def api_stack_stop():
+    if not CONFIG.get("stack_enabled", True):
+        return jsonify({"ok": False, "error": "stack_disabled"}), 400
     stopped = STACK.stop_all()
     with STATE_LOCK:
         STATE["stack_running"] = False
