@@ -83,6 +83,16 @@ def generate_id(prefix, existing):
     return f"{base}-{int(time.time())}"
 
 
+def stable_id_from_name(name, existing):
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-") or "id"
+    if base not in existing:
+        return base
+    idx = 2
+    while f"{base}-{idx}" in existing:
+        idx += 1
+    return f"{base}-{idx}"
+
+
 def registry_get_item(items, item_id):
     for item in items:
         if item.get("id") == item_id:
@@ -215,7 +225,7 @@ def merge_tasks(existing, incoming):
     merged = list(existing)
     for item in incoming:
         name = item.get("name") or ""
-        task_id = item.get("id") or generate_id(name, existing_ids)
+        task_id = item.get("id") or stable_id_from_name(name, existing_ids)
         existing_ids.add(task_id)
         record = {
             "id": task_id,
@@ -229,6 +239,18 @@ def merge_tasks(existing, incoming):
         else:
             merged.append(record)
     return merged
+
+
+def normalize_tasks(items):
+    existing_ids = {t.get("id") for t in items if t.get("id")}
+    updated = False
+    for item in items:
+        if not item.get("id"):
+            name = item.get("name") or ""
+            item["id"] = stable_id_from_name(name, existing_ids)
+            existing_ids.add(item["id"])
+            updated = True
+    return updated, items
 
 
 def load_users_from_csv(path):
@@ -257,7 +279,7 @@ def merge_users(existing, incoming):
     merged = list(existing)
     for item in incoming:
         name = item.get("name") or ""
-        user_id = item.get("id") or generate_id(name, existing_ids)
+        user_id = item.get("id") or stable_id_from_name(name, existing_ids)
         existing_ids.add(user_id)
         record = {"id": user_id, "name": name}
         current = registry_get_item(merged, user_id)
@@ -266,6 +288,18 @@ def merge_users(existing, incoming):
         else:
             merged.append(record)
     return merged
+
+
+def normalize_users(items):
+    existing_ids = {u.get("id") for u in items if u.get("id")}
+    updated = False
+    for item in items:
+        if not item.get("id"):
+            name = item.get("name") or ""
+            item["id"] = stable_id_from_name(name, existing_ids)
+            existing_ids.add(item["id"])
+            updated = True
+    return updated, items
 
 
 def load_interfaces_from_csv(path):
@@ -282,7 +316,7 @@ def load_interfaces_from_csv(path):
                 iface_id = (row.get("id") or row.get("interface_id") or "").strip()
                 name = (row.get("name") or row.get("interface") or "").strip()
                 if not iface_id:
-                    iface_id = name.lower().replace(" ", "-") if name else ""
+                    iface_id = stable_id_from_name(name, set())
                 if not iface_id:
                     continue
                 interfaces.append(
@@ -338,6 +372,10 @@ def seed_registry():
                 write_registry("tasks", tasks)
         if not tasks:
             write_registry("tasks", default_tasks())
+        else:
+            changed, tasks = normalize_tasks(tasks)
+            if changed:
+                write_registry("tasks", tasks)
         interfaces = load_registry("interfaces")
         interfaces_csv_path = CONFIG.get("interfaces_csv_path")
         interfaces_csv_mode = (CONFIG.get("interfaces_csv_mode") or "replace").lower()
@@ -366,6 +404,10 @@ def seed_registry():
                 write_registry("users", users)
         if not isinstance(users, list):
             write_registry("users", [])
+        else:
+            changed, users = normalize_users(users)
+            if changed:
+                write_registry("users", users)
 
 
 def load_config():

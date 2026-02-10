@@ -98,6 +98,8 @@ The UI manages three registries stored under `registry/`:
 You can add users/tasks in the UI or import JSON arrays.
 Tasks, users, and interfaces can be auto-loaded from CSV on startup (default). See `EXAMPLE.CSV`, `USERS_EXAMPLE.CSV`, and `INTERFACES_EXAMPLE.CSV` for format and update `*_csv_path` if needed.
 
+If an `id` column is missing, the system generates a stable slug ID from the name (so IDs stay consistent across restarts). For strict control, define `id` explicitly in the CSV.
+
 ## Storage layout
 
 Metadata:
