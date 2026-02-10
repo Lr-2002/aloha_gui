@@ -570,6 +570,31 @@ stopEpisodeBtn.addEventListener("click", async () => {
   }
 });
 
+document.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter" || event.repeat) {
+    return;
+  }
+  const target = event.target;
+  const tag = target && target.tagName ? target.tagName.toUpperCase() : "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
+    return;
+  }
+  event.preventDefault();
+  if (lastStatus && lastStatus.running) {
+    if (!stopEpisodeBtn.disabled) {
+      stopEpisodeBtn.click();
+    }
+    return;
+  }
+  if (lastStatus && !lastStatus.session) {
+    episodeMsgEl.textContent = "Start session first.";
+    return;
+  }
+  if (!startEpisodeBtn.disabled) {
+    startEpisodeBtn.click();
+  }
+});
+
 refreshEpisodesBtn.addEventListener("click", async () => {
   try {
     await apiRequest("/api/episodes");
