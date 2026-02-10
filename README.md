@@ -124,6 +124,7 @@ Example `INTERFACES_EXAMPLE.CSV`:
 ```
 id,name,type,description,config_path
 aloha,Aloha,aloha,Aloha data collection interface.,interfaces/aloha.json
+direct,Direct,direct,Direct ROS + collect.py workflow.,interfaces/direct.json
 ```
 
 ## Storage layout
