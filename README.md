@@ -2,6 +2,15 @@
 
 Minimal web UI + backend to run data collection episodes and prepare replay payloads.
 
+## What this system does
+
+- Provides a web UI to select **Interface / User / Task** and start/stop episodes.
+- Uses CSV files as the **source of truth** for users/tasks/interfaces (auto-loaded on startup).
+- Stores trajectories in `data_root` and writes metadata logs for audit and CPH.
+- Interface selection loads the **interface-specific config** (start commands, topics, etc.).
+
+Current interface implemented: **Aloha** (others can be added by CSV + JSON config).
+
 ## Quick start
 
 1) Install dependencies
@@ -34,6 +43,8 @@ Edit `config.json`:
 - `interfaces_csv_path`: CSV file for interfaces (default `INTERFACES_EXAMPLE.CSV`)
 - `interfaces_csv_mode`: `replace` or `merge`
 - `interfaces_csv_autoload`: load CSV on startup
+
+`replace` means CSV is the only source; restarting overwrites manual edits. Use `merge` if you want to keep manual additions.
 
 Example shell template matching the default AgileX image paths (conda + ROS):
 
@@ -95,10 +106,25 @@ The UI manages three registries stored under `registry/`:
 - `tasks.json`
 - `interfaces.json`
 
-You can add users/tasks in the UI or import JSON arrays.
 Tasks, users, and interfaces can be auto-loaded from CSV on startup (default). See `EXAMPLE.CSV`, `USERS_EXAMPLE.CSV`, and `INTERFACES_EXAMPLE.CSV` for format and update `*_csv_path` if needed.
 
 If an `id` column is missing, the system generates a stable slug ID from the name (so IDs stay consistent across restarts). For strict control, define `id` explicitly in the CSV.
+
+The UI still allows adding users/tasks manually, but they will be overwritten on restart if the CSV mode is `replace`.
+
+## Interface config mapping
+
+`INTERFACES_EXAMPLE.CSV` includes a `config_path` column. When you select an interface in the UI and start a session:
+
+- The JSON at `config_path` is loaded.
+- Its keys override the base `config.json` for that session only.
+
+Example `INTERFACES_EXAMPLE.CSV`:
+
+```
+id,name,type,description,config_path
+aloha,Aloha,aloha,Aloha data collection interface.,interfaces/aloha.json
+```
 
 ## Storage layout
 
@@ -122,6 +148,33 @@ Per-session data (created under `data_root`):
   - `.meta/episodes.jsonl` (start/end timestamps per episode)
   - `.meta/logs/episode_<n>.log` (collector stdout)
   - `.meta/logs/stack_*.log` (ROS/launch logs)
+
+`.meta` is hidden; use `ls -la` or `tree -a` to view it.
+
+CPH can be computed from `.meta/episodes.jsonl` (per task) or `registry/episodes.jsonl` (global).
+
+## Operator flow (Aloha)
+
+1) Start the web UI (`python app.py --host 0.0.0.0 --port 8080`)
+2) In the UI: select **Interface / User / Task**
+3) Click **Start Session**
+4) (Optional) click **Start Stack** to launch ROS + arm + camera
+5) Click **Start Next Episode**
+6) Click **Stop Episode** when done
+7) Repeat for the next episode
+
+## Multi-server deployment (3 machines)
+
+Goal: same **users/tasks/interfaces**, separate **data**.
+
+Recommended recipe:
+
+1) Put CSVs on shared storage (or distribute identical copies):
+   - `tasks.csv`, `users.csv`, `interfaces.csv`
+2) Point each server to the same CSV paths in `config.json`.
+3) Use different `data_root` per server (e.g. `/data/server1`, `/data/server2`, `/data/server3`).
+
+This guarantees all machines show the same user/task/interface lists while storing trajectories separately.
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 
@@ -212,12 +265,6 @@ This maps the doc's manual steps to the web UI:
    - Runs: `collect_data.py` inside `conda activate aloha`
 3) If you unplug CAN devices, re-run `can_config.sh` by stopping/starting the stack.
    - UI: `Stop Stack` then `Start Stack`
-
-3) Run the server
-
-```bash
-python app.py --host 0.0.0.0 --port 8080
-```
 
 Open `http://<host>:8080` in the browser.
 
