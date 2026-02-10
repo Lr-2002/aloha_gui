@@ -9,7 +9,7 @@ Minimal web UI + backend to run data collection episodes and prepare replay payl
 - Stores trajectories in `data_root` and writes metadata logs for audit and CPH.
 - Interface selection loads the **interface-specific config** (start commands, topics, etc.).
 
-Current interface implemented: **Aloha** (others can be added by CSV + JSON config).
+Current interfaces included: **Aloha**, **Direct**, and **Pika** (others can be added by CSV + JSON config).
 
 ## Quick start
 
@@ -127,6 +127,7 @@ Example `INTERFACES_EXAMPLE.CSV`:
 id,name,type,description,config_path
 aloha,Aloha,aloha,Aloha data collection interface.,interfaces/aloha.json
 direct,Direct,direct,Direct ROS + collect.py workflow.,interfaces/direct.json
+pika,Pika,pika,Pika Sense camera + Vive tracker collection.,interfaces/pika.json
 ```
 
 ## Storage layout
@@ -165,6 +166,22 @@ CPH can be computed from `.meta/episodes.jsonl` (per task) or `registry/episodes
 5) Click **Start Next Episode**
 6) Click **Stop Episode** when done
 7) Repeat for the next episode
+
+## Operator flow (Pika)
+
+1) Make sure `pika_sdk` dependencies are installed (see `third_party/pika_sdk/requirements.txt`).
+2) Connect Pika Sense device and cameras.
+3) Start the web UI.
+4) Select **Pika** interface, user, task.
+5) Click **Start Session**, then **Start Next Episode**.
+
+Pika data is saved under `episode_<n>/` with:
+
+- `frames/fisheye/*.jpg`
+- `frames/realsense_color/*.jpg`
+- `frames/realsense_depth/*.npy`
+- `poses.jsonl`
+- `meta.json`
 
 ## Multi-server deployment (3 machines)
 

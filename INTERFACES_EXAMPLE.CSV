@@ -1,3 +1,4 @@
 id,name,type,description,config_path
 aloha,Aloha,aloha,Aloha data collection interface.,interfaces/aloha.json
 direct,Direct,direct,Direct ROS + collect.py workflow.,interfaces/direct.json
+pika,Pika,pika,Pika Sense camera + Vive tracker collection.,interfaces/pika.json
