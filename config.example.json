@@ -42,6 +42,8 @@
   "camera_cleanup_required": true,
   "camera_cleanup_use_sudo": true,
   "camera_cleanup_extra_cmd": "",
+  "camera_cleanup_skip_if_topics_present": false,
+  "camera_cleanup_skip_topics": [],
   "rosnode_list_cmd": "source /opt/ros/noetic/setup.bash && rosnode list",
   "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
   "topic_check_on_start": false,

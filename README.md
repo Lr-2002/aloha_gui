@@ -95,6 +95,8 @@ System stack (auto-start ROS + arm + camera) is configurable via:
 - `camera_cleanup_required`
 - `camera_cleanup_use_sudo`
 - `camera_cleanup_extra_cmd`
+- `camera_cleanup_skip_if_topics_present`
+- `camera_cleanup_skip_topics`
 - `rosnode_list_cmd`
 - `collect_max_timesteps`: max steps per episode (`-1` for no limit)
 

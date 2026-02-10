@@ -452,6 +452,8 @@ def load_config():
         "camera_cleanup_required": True,
         "camera_cleanup_use_sudo": True,
         "camera_cleanup_extra_cmd": "",
+        "camera_cleanup_skip_if_topics_present": False,
+        "camera_cleanup_skip_topics": [],
         "rosnode_list_cmd": "source /opt/ros/noetic/setup.bash && rosnode list",
         "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
         "topic_check_on_start": True,
@@ -1284,6 +1286,24 @@ def roscore_is_running():
         return False
 
 
+def list_rostopics():
+    cmd = CONFIG.get("topic_check_cmd")
+    if not cmd:
+        return []
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        return [line.strip() for line in result.stdout.splitlines() if line.strip().startswith("/")]
+    except Exception:
+        return []
+
+
 def list_rosnodes():
     cmd = CONFIG.get("rosnode_list_cmd")
     if not cmd:
@@ -1328,6 +1348,8 @@ def cleanup_camera():
     required = bool(CONFIG.get("camera_cleanup_required", False))
     use_sudo = bool(CONFIG.get("camera_cleanup_use_sudo", False))
     extra_cmd = CONFIG.get("camera_cleanup_extra_cmd") or ""
+    skip_if_present = bool(CONFIG.get("camera_cleanup_skip_if_topics_present", False))
+    skip_topics = CONFIG.get("camera_cleanup_skip_topics") or []
 
     killed_nodes = []
     killed_patterns = []
@@ -1343,6 +1365,25 @@ def cleanup_camera():
             sudo_input = f"{get_sudo_password()}\n"
         else:
             sudo_prefix = "sudo -n "
+
+    if skip_if_present and skip_topics:
+        present = set(list_rostopics())
+        missing = [t for t in skip_topics if t not in present]
+        if not missing:
+            status = {
+                "killed_nodes": [],
+                "killed_processes": [],
+                "remaining_nodes": [],
+                "remaining_processes": {},
+                "last_run": now_iso(),
+                "error": None,
+                "skipped": True,
+                "skip_topics": skip_topics,
+            }
+            with STATE_LOCK:
+                STATE["camera_cleanup_status"] = status
+            add_stack_log_line("[info] camera cleanup skipped (topics present)")
+            return True
 
     for attempt in range(retries):
         if pre_cmd:
