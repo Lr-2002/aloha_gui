@@ -209,6 +209,12 @@ def main():
                 "fisheye": fisheye_camera,
                 "realsense": realsense_camera,
                 "tracker_id": tracker_id,
+                "fail_counts": {"fisheye": 0, "rs_color": 0, "rs_depth": 0},
+                "disabled": {
+                    "fisheye": not bool(fisheye_camera),
+                    "rs_color": not bool(realsense_camera and device["enable_realsense_color"]),
+                    "rs_depth": not bool(realsense_camera and device["enable_realsense_depth"]),
+                },
                 "poses_path": device_dir / "poses.jsonl",
                 "meta": meta,
                 "dirs": {
@@ -242,6 +248,7 @@ def main():
     step = 0
     last_frame_time = time.time()
     sleep_target = 1.0 / max(1, args.fps)
+    fail_limit = 30
 
     try:
         files = []
@@ -257,6 +264,7 @@ def main():
 
                 timestamp = now_iso()
                 any_data = False
+                batch = []
                 for item, f in files:
                     record = {
                         "timestep": step,
@@ -271,30 +279,50 @@ def main():
                     tracker_id = item["tracker_id"]
                     dirs = item["dirs"]
                     spec = item["spec"]
+                    fail_counts = item["fail_counts"]
+                    disabled = item["disabled"]
 
-                    if fisheye_camera:
+                    if fisheye_camera and not disabled["fisheye"]:
                         ok, frame = fisheye_camera.get_frame()
                         if ok and frame is not None:
                             path = dirs["fisheye"] / f"{step:06d}.jpg"
                             cv2.imwrite(str(path), frame)
                             record["frames"]["fisheye"] = str(path.name)
                             has_data = True
+                            fail_counts["fisheye"] = 0
+                        else:
+                            fail_counts["fisheye"] += 1
+                            if fail_counts["fisheye"] >= fail_limit:
+                                disabled["fisheye"] = True
+                                print("[warn] fisheye unavailable; disabling stream")
 
-                    if realsense_camera and spec["enable_realsense_color"]:
+                    if realsense_camera and spec["enable_realsense_color"] and not disabled["rs_color"]:
                         ok, frame = realsense_camera.get_color_frame()
                         if ok and frame is not None:
                             path = dirs["rs_color"] / f"{step:06d}.jpg"
                             cv2.imwrite(str(path), frame)
                             record["frames"]["realsense_color"] = str(path.name)
                             has_data = True
+                            fail_counts["rs_color"] = 0
+                        else:
+                            fail_counts["rs_color"] += 1
+                            if fail_counts["rs_color"] >= fail_limit:
+                                disabled["rs_color"] = True
+                                print("[warn] realsense color unavailable; disabling stream")
 
-                    if realsense_camera and spec["enable_realsense_depth"]:
+                    if realsense_camera and spec["enable_realsense_depth"] and not disabled["rs_depth"]:
                         ok, depth = realsense_camera.get_depth_frame()
                         if ok and depth is not None:
                             path = dirs["rs_depth"] / f"{step:06d}.npy"
                             np.save(str(path), depth)
                             record["frames"]["realsense_depth"] = str(path.name)
                             has_data = True
+                            fail_counts["rs_depth"] = 0
+                        else:
+                            fail_counts["rs_depth"] += 1
+                            if fail_counts["rs_depth"] >= fail_limit:
+                                disabled["rs_depth"] = True
+                                print("[warn] realsense depth unavailable; disabling stream")
 
                     if tracker_id:
                         pose = item["sense"].get_pose(tracker_id)
@@ -305,12 +333,14 @@ def main():
                             }
                             has_data = True
 
+                    batch.append((f, record, has_data))
                     if has_data:
-                        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                        f.flush()
                         any_data = True
 
                 if any_data:
+                    for f, record, _ in batch:
+                        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                        f.flush()
                     step += 1
                     print(f"Frame data: {step}")
                 else:
