@@ -41,7 +41,7 @@
       </header>
 
       <main class="grid">
-        <section class="card" id="stack-card">
+        <section class="card">
           <h2>Session Setup</h2>
           <p class="muted">Define the operator and task name before starting episodes.</p>
           <div class="field">
@@ -71,7 +71,7 @@
           <p class="hint" id="session-path">Session path: -</p>
         </section>
 
-        <section class="card">
+        <section class="card" id="stack-card">
           <h2>System Stack</h2>
           <p class="muted">Start ROS core, arm, and camera from config.</p>
           <div class="status-row">
@@ -151,7 +151,7 @@
           <p class="hint" id="replay-msg">No replay payload.</p>
         </section>
 
-        <section class="card log-card" id="stack-log-card">
+        <section class="card log-card">
           <div class="card-header">
             <h2>Live Log Tail</h2>
             <button id="copy-live-log" class="ghost small">Copy</button>
@@ -160,7 +160,7 @@
           <pre id="log-output">No output yet.</pre>
         </section>
 
-        <section class="card log-card">
+        <section class="card log-card" id="stack-log-card">
           <div class="card-header">
             <h2>Stack Log Tail</h2>
             <button id="copy-stack-log" class="ghost small">Copy</button>
