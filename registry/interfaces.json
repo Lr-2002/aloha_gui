@@ -5,5 +5,19 @@
     "type": "aloha",
     "description": "Aloha data collection interface.",
     "config_path": "interfaces/aloha.json"
+  },
+  {
+    "id": "direct",
+    "name": "Direct",
+    "type": "direct",
+    "description": "Direct ROS + collect.py workflow.",
+    "config_path": "interfaces/direct.json"
+  },
+  {
+    "id": "pika",
+    "name": "Pika",
+    "type": "pika",
+    "description": "Pika Sense camera + Vive tracker collection.",
+    "config_path": "interfaces/pika.json"
   }
 ]
