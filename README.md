@@ -31,6 +31,9 @@ Edit `config.json`:
 - `users_csv_path`: CSV file for users (default `USERS_EXAMPLE.CSV`)
 - `users_csv_mode`: `replace` or `merge`
 - `users_csv_autoload`: load CSV on startup
+- `interfaces_csv_path`: CSV file for interfaces (default `INTERFACES_EXAMPLE.CSV`)
+- `interfaces_csv_mode`: `replace` or `merge`
+- `interfaces_csv_autoload`: load CSV on startup
 
 Example shell template matching the default AgileX image paths (conda + ROS):
 
@@ -93,7 +96,7 @@ The UI manages three registries stored under `registry/`:
 - `interfaces.json`
 
 You can add users/tasks in the UI or import JSON arrays.
-Tasks and users can be auto-loaded from CSV on startup (default). See `EXAMPLE.CSV` and `USERS_EXAMPLE.CSV` for format and update `*_csv_path` if needed.
+Tasks, users, and interfaces can be auto-loaded from CSV on startup (default). See `EXAMPLE.CSV`, `USERS_EXAMPLE.CSV`, and `INTERFACES_EXAMPLE.CSV` for format and update `*_csv_path` if needed.
 
 ## Storage layout
 
@@ -103,6 +106,11 @@ Metadata:
 - `registry/tasks.json`: task list (`id`, `name`, `description`, `success_criteria`)
 - `registry/interfaces.json`: interface list (`id`, `name`, `type`)
 - `registry/episodes.jsonl`: global episode events (`start`, `stop_requested`, `end`)
+ 
+Interface config:
+
+- Each interface can reference a `config_path` (JSON) from `INTERFACES_EXAMPLE.CSV`.
+- The selected interface's config is merged into the base config when a session starts.
 
 Per-session data (created under `data_root`):
 

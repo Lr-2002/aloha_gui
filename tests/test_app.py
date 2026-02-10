@@ -19,15 +19,25 @@ class AppTestCase(unittest.TestCase):
         self.data_root.mkdir(parents=True, exist_ok=True)
 
         app_module.REGISTRY_DIR = self.registry_dir
+        self._config_backup = copy.deepcopy(app_module.CONFIG)
+        self._base_backup = copy.deepcopy(app_module.BASE_CONFIG)
+        base = copy.deepcopy(app_module.BASE_CONFIG)
+        base["data_root"] = str(self.data_root)
+        base["tasks_csv_autoload"] = False
+        base["users_csv_autoload"] = False
+        base["interfaces_csv_autoload"] = False
+        app_module.BASE_CONFIG = base
+        app_module.CONFIG.clear()
+        app_module.CONFIG.update(base)
         app_module.DATA_ROOT = self.data_root
         app_module.seed_registry()
         self.client = app_module.app.test_client()
         self._reset_state()
-        self._config_backup = copy.deepcopy(app_module.CONFIG)
 
     def tearDown(self):
         app_module.CONFIG.clear()
         app_module.CONFIG.update(self._config_backup)
+        app_module.BASE_CONFIG = self._base_backup
         app_module.set_sudo_password(None)
 
     def _patch(self, obj, name, value):

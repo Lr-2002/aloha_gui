@@ -21,6 +21,8 @@ from flask import Flask, jsonify, request, send_from_directory
 APP_ROOT = Path(__file__).resolve().parent
 REGISTRY_DIR = APP_ROOT / "registry"
 
+BASE_CONFIG = None
+
 
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -266,6 +268,60 @@ def merge_users(existing, incoming):
     return merged
 
 
+def load_interfaces_from_csv(path):
+    csv_path = Path(path)
+    if not csv_path.exists():
+        return []
+    interfaces = []
+    try:
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if not row:
+                    continue
+                iface_id = (row.get("id") or row.get("interface_id") or "").strip()
+                name = (row.get("name") or row.get("interface") or "").strip()
+                if not iface_id:
+                    iface_id = name.lower().replace(" ", "-") if name else ""
+                if not iface_id:
+                    continue
+                interfaces.append(
+                    {
+                        "id": iface_id,
+                        "name": name or iface_id,
+                        "type": (row.get("type") or "").strip() or iface_id,
+                        "description": (row.get("description") or "").strip(),
+                        "config_path": (row.get("config_path") or row.get("config") or "").strip(),
+                    }
+                )
+    except Exception:
+        return []
+    return interfaces
+
+
+def merge_interfaces(existing, incoming):
+    existing_ids = {i.get("id") for i in existing if i.get("id")}
+    merged = list(existing)
+    for item in incoming:
+        iface_id = item.get("id")
+        if not iface_id:
+            continue
+        record = {
+            "id": iface_id,
+            "name": item.get("name") or iface_id,
+            "type": item.get("type") or iface_id,
+            "description": item.get("description", ""),
+            "config_path": item.get("config_path", ""),
+        }
+        current = registry_get_item(merged, iface_id)
+        if current:
+            current.update(record)
+        else:
+            merged.append(record)
+        existing_ids.add(iface_id)
+    return merged
+
+
 def seed_registry():
     with REGISTRY_LOCK:
         tasks = load_registry("tasks")
@@ -283,6 +339,17 @@ def seed_registry():
         if not tasks:
             write_registry("tasks", default_tasks())
         interfaces = load_registry("interfaces")
+        interfaces_csv_path = CONFIG.get("interfaces_csv_path")
+        interfaces_csv_mode = (CONFIG.get("interfaces_csv_mode") or "replace").lower()
+        interfaces_csv_autoload = bool(CONFIG.get("interfaces_csv_autoload", False))
+        if interfaces_csv_autoload and interfaces_csv_path:
+            csv_interfaces = load_interfaces_from_csv(interfaces_csv_path)
+            if csv_interfaces:
+                if interfaces_csv_mode == "merge":
+                    interfaces = merge_interfaces(interfaces, csv_interfaces)
+                else:
+                    interfaces = merge_interfaces([], csv_interfaces)
+                write_registry("interfaces", interfaces)
         if not interfaces:
             write_registry("interfaces", default_interfaces())
         users = load_registry("users")
@@ -317,6 +384,9 @@ def load_config():
         "users_csv_autoload": True,
         "users_csv_path": "USERS_EXAMPLE.CSV",
         "users_csv_mode": "replace",
+        "interfaces_csv_autoload": True,
+        "interfaces_csv_path": "INTERFACES_EXAMPLE.CSV",
+        "interfaces_csv_mode": "replace",
         "auto_start_stack": True,
         "require_sudo_password": False,
         "stack_workdir": "",
@@ -394,17 +464,19 @@ def load_config():
         "stack_workdir",
         "tasks_csv_path",
         "users_csv_path",
+        "interfaces_csv_path",
     ):
         value = cfg.get(path_key)
         if value:
             path_value = Path(value).expanduser()
-            if path_key == "tasks_csv_path" and not path_value.is_absolute():
+            if path_key.endswith("_csv_path") and not path_value.is_absolute():
                 path_value = APP_ROOT / path_value
             cfg[path_key] = str(path_value)
     return cfg
 
 
 CONFIG = load_config()
+BASE_CONFIG = dict(CONFIG)
 seed_registry()
 
 DATA_ROOT = expand_path(CONFIG["data_root"])
@@ -452,6 +524,49 @@ STATE = {
         "error": None,
     },
 }
+
+
+def apply_config_overrides(overrides):
+    if not overrides:
+        return
+    CONFIG.clear()
+    CONFIG.update(BASE_CONFIG)
+    CONFIG.update(overrides)
+    for path_key in (
+        "data_root",
+        "collect_script",
+        "collect_workdir",
+        "stack_workdir",
+        "tasks_csv_path",
+        "users_csv_path",
+        "interfaces_csv_path",
+    ):
+        value = CONFIG.get(path_key)
+        if value:
+            path_value = Path(value).expanduser()
+            if path_key.endswith("_csv_path") and not path_value.is_absolute():
+                path_value = APP_ROOT / path_value
+            CONFIG[path_key] = str(path_value)
+    global DATA_ROOT, TAIL_LINES
+    DATA_ROOT = expand_path(CONFIG["data_root"])
+    TAIL_LINES = int(CONFIG.get("tail_lines", 200))
+
+
+def load_interface_config(interface):
+    cfg_path = (interface or {}).get("config_path") or ""
+    if not cfg_path:
+        return {}
+    path = Path(cfg_path)
+    if not path.is_absolute():
+        path = APP_ROOT / path
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 SUDO_PASSWORD = None
 SUDO_LOCK = threading.Lock()
@@ -1472,6 +1587,9 @@ def api_session_start():
     if not interface:
         return jsonify({"ok": False, "error": "invalid_interface"}), 400
 
+    interface_config = load_interface_config(interface)
+    apply_config_overrides(interface_config)
+
     if not user_id:
         user_name = (payload.get("user") or "").strip()
         if not user_name:
@@ -1517,6 +1635,7 @@ def api_session_start():
     session = {
         "interface_id": interface_id,
         "interface_name": interface.get("name"),
+        "interface_config_path": interface.get("config_path") or "",
         "user_id": user_id,
         "user_name": user.get("name"),
         "task_id": task_id,
