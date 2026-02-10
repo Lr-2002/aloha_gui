@@ -450,59 +450,67 @@ addTaskBtn.addEventListener("click", async () => {
   }
 });
 
-importTasksBtn.addEventListener("click", async () => {
-  try {
-    const items = JSON.parse(importTasksArea.value || "[]");
-    await apiRequest("/api/tasks/import", {
-      method: "POST",
-      body: JSON.stringify({ items, mode: "merge" }),
-    });
-    await loadRegistry();
-    registryMsgEl.textContent = "Tasks imported.";
-  } catch (err) {
-    registryMsgEl.textContent = `Task import error: ${err.message}`;
-  }
-});
+if (importTasksBtn && importTasksArea) {
+  importTasksBtn.addEventListener("click", async () => {
+    try {
+      const items = JSON.parse(importTasksArea.value || "[]");
+      await apiRequest("/api/tasks/import", {
+        method: "POST",
+        body: JSON.stringify({ items, mode: "merge" }),
+      });
+      await loadRegistry();
+      registryMsgEl.textContent = "Tasks imported.";
+    } catch (err) {
+      registryMsgEl.textContent = `Task import error: ${err.message}`;
+    }
+  });
+}
 
-importUsersBtn.addEventListener("click", async () => {
-  try {
-    const items = JSON.parse(importUsersArea.value || "[]");
-    await apiRequest("/api/users/import", {
-      method: "POST",
-      body: JSON.stringify({ items, mode: "merge" }),
-    });
-    await loadRegistry();
-    registryMsgEl.textContent = "Users imported.";
-  } catch (err) {
-    registryMsgEl.textContent = `User import error: ${err.message}`;
-  }
-});
+if (importUsersBtn && importUsersArea) {
+  importUsersBtn.addEventListener("click", async () => {
+    try {
+      const items = JSON.parse(importUsersArea.value || "[]");
+      await apiRequest("/api/users/import", {
+        method: "POST",
+        body: JSON.stringify({ items, mode: "merge" }),
+      });
+      await loadRegistry();
+      registryMsgEl.textContent = "Users imported.";
+    } catch (err) {
+      registryMsgEl.textContent = `User import error: ${err.message}`;
+    }
+  });
+}
 
-importTasksCsvBtn.addEventListener("click", async () => {
-  try {
-    await importCsvFile(
-      importTasksFile.files[0],
-      csvToTasks,
-      "/api/tasks/import",
-      "Tasks imported from CSV.",
-    );
-  } catch (err) {
-    registryMsgEl.textContent = `Task CSV import error: ${err.message}`;
-  }
-});
+if (importTasksCsvBtn && importTasksFile) {
+  importTasksCsvBtn.addEventListener("click", async () => {
+    try {
+      await importCsvFile(
+        importTasksFile.files[0],
+        csvToTasks,
+        "/api/tasks/import",
+        "Tasks imported from CSV.",
+      );
+    } catch (err) {
+      registryMsgEl.textContent = `Task CSV import error: ${err.message}`;
+    }
+  });
+}
 
-importUsersCsvBtn.addEventListener("click", async () => {
-  try {
-    await importCsvFile(
-      importUsersFile.files[0],
-      csvToUsers,
-      "/api/users/import",
-      "Users imported from CSV.",
-    );
-  } catch (err) {
-    registryMsgEl.textContent = `User CSV import error: ${err.message}`;
-  }
-});
+if (importUsersCsvBtn && importUsersFile) {
+  importUsersCsvBtn.addEventListener("click", async () => {
+    try {
+      await importCsvFile(
+        importUsersFile.files[0],
+        csvToUsers,
+        "/api/users/import",
+        "Users imported from CSV.",
+      );
+    } catch (err) {
+      registryMsgEl.textContent = `User CSV import error: ${err.message}`;
+    }
+  });
+}
 
 setSudoBtn.addEventListener("click", async () => {
   const password = sudoInput.value;

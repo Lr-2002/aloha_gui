@@ -25,6 +25,9 @@ Edit `config.json`:
 - `collect_workdir`: directory to run the command from
 - `collect_shell_template` (optional): a full shell command with placeholders
 - `collect_max_timesteps`: max steps per episode (`-1` for no limit)
+- `tasks_csv_path`: CSV file for tasks (default `EXAMPLE.CSV`)
+- `tasks_csv_mode`: `replace` or `merge`
+- `tasks_csv_autoload`: load CSV on startup
 
 Example shell template matching the default AgileX image paths (conda + ROS):
 
@@ -87,7 +90,7 @@ The UI manages three registries stored under `registry/`:
 - `interfaces.json`
 
 You can add users/tasks in the UI or import JSON arrays.
-CSV import is supported in the UI; see `EXAMPLE.CSV` for tasks format.
+Tasks can be auto-loaded from CSV on startup (default). See `EXAMPLE.CSV` for format and update `tasks_csv_path` if needed.
 
 ## Storage layout
 

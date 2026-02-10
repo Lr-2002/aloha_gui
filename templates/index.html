@@ -170,29 +170,8 @@
         </section>
 
         <section class="card">
-          <h2>Registry Import</h2>
-          <p class="muted">Paste JSON arrays or import CSV (Excel: save as CSV first).</p>
-          <div class="field">
-            <label for="import-tasks">Tasks JSON</label>
-            <textarea id="import-tasks" rows="4" placeholder='[{"name":"Pick and Place","description":"...","success_criteria":"..."}]'></textarea>
-            <button id="import-tasks-btn" class="ghost small">Import Tasks</button>
-          </div>
-          <div class="field">
-            <label for="import-tasks-file">Tasks CSV</label>
-            <input id="import-tasks-file" type="file" accept=".csv" />
-            <button id="import-tasks-csv-btn" class="ghost small">Import Tasks CSV</button>
-            <p class="hint">Example file: EXAMPLE.CSV</p>
-          </div>
-          <div class="field">
-            <label for="import-users">Users JSON</label>
-            <textarea id="import-users" rows="4" placeholder='[{"name":"Alice"},{"name":"Bob"}]'></textarea>
-            <button id="import-users-btn" class="ghost small">Import Users</button>
-          </div>
-          <div class="field">
-            <label for="import-users-file">Users CSV</label>
-            <input id="import-users-file" type="file" accept=".csv" />
-            <button id="import-users-csv-btn" class="ghost small">Import Users CSV</button>
-          </div>
+          <h2>Registry Source</h2>
+          <p class="muted">Tasks are loaded from CSV on startup (see config).</p>
           <p class="hint" id="registry-msg">-</p>
         </section>
       </main>

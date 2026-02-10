@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import atexit
+import csv
 import json
 import os
 import random
@@ -10,7 +12,6 @@ import shlex
 import subprocess
 import threading
 import time
-import atexit
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -175,9 +176,73 @@ def default_interfaces():
     ]
 
 
+def load_tasks_from_csv(path):
+    csv_path = Path(path)
+    if not csv_path.exists():
+        return []
+    tasks = []
+    try:
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if not row:
+                    continue
+                name = (row.get("name") or row.get("task_name") or "").strip()
+                if not name:
+                    continue
+                task_id = (row.get("id") or "").strip()
+                record = {
+                    "id": task_id,
+                    "name": name,
+                    "description": (row.get("description") or row.get("task_description") or "").strip(),
+                    "success_criteria": (
+                        row.get("success_criteria")
+                        or row.get("success")
+                        or row.get("criteria")
+                        or ""
+                    ).strip(),
+                }
+                tasks.append(record)
+    except Exception:
+        return []
+    return tasks
+
+
+def merge_tasks(existing, incoming):
+    existing_ids = {t.get("id") for t in existing if t.get("id")}
+    merged = list(existing)
+    for item in incoming:
+        name = item.get("name") or ""
+        task_id = item.get("id") or generate_id(name, existing_ids)
+        existing_ids.add(task_id)
+        record = {
+            "id": task_id,
+            "name": name,
+            "description": item.get("description", ""),
+            "success_criteria": item.get("success_criteria", ""),
+        }
+        current = registry_get_item(merged, task_id)
+        if current:
+            current.update(record)
+        else:
+            merged.append(record)
+    return merged
+
+
 def seed_registry():
     with REGISTRY_LOCK:
         tasks = load_registry("tasks")
+        csv_path = CONFIG.get("tasks_csv_path")
+        csv_mode = (CONFIG.get("tasks_csv_mode") or "replace").lower()
+        csv_autoload = bool(CONFIG.get("tasks_csv_autoload", False))
+        if csv_autoload and csv_path:
+            csv_tasks = load_tasks_from_csv(csv_path)
+            if csv_tasks:
+                if csv_mode == "merge":
+                    tasks = merge_tasks(tasks, csv_tasks)
+                else:
+                    tasks = merge_tasks([], csv_tasks)
+                write_registry("tasks", tasks)
         if not tasks:
             write_registry("tasks", default_tasks())
         interfaces = load_registry("interfaces")
@@ -198,6 +263,9 @@ def load_config():
         "collect_shell_template": "",
         "collect_max_timesteps": -1,
         "replay_shell_template": "",
+        "tasks_csv_autoload": True,
+        "tasks_csv_path": "EXAMPLE.CSV",
+        "tasks_csv_mode": "replace",
         "auto_start_stack": True,
         "require_sudo_password": False,
         "stack_workdir": "",
@@ -273,10 +341,14 @@ def load_config():
         "collect_script",
         "collect_workdir",
         "stack_workdir",
+        "tasks_csv_path",
     ):
         value = cfg.get(path_key)
         if value:
-            cfg[path_key] = expand_path(value)
+            path_value = Path(value).expanduser()
+            if path_key == "tasks_csv_path" and not path_value.is_absolute():
+                path_value = APP_ROOT / path_value
+            cfg[path_key] = str(path_value)
     return cfg
 
 
