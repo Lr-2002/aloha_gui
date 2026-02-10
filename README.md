@@ -87,6 +87,7 @@ The UI manages three registries stored under `registry/`:
 - `interfaces.json`
 
 You can add users/tasks in the UI or import JSON arrays.
+CSV import is supported in the UI; see `EXAMPLE.CSV` for tasks format.
 
 If `auto_start_stack` is true, the server will attempt to start the stack before collecting.
 

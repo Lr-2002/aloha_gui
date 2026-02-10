@@ -1,0 +1,5 @@
+name,description,success_criteria
+Insert Peg,Insert a peg into a matching hole.,Peg fully inserted and stable.
+Pick and Place,Pick a single object and place it in a target zone.,Object ends inside target zone without drop.
+Stack Blocks,Stack multiple blocks into a stable tower.,All blocks stacked without collapse.
+Plug Connector,Align and plug a connector into a socket.,Connector fully seated and aligned.

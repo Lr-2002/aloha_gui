@@ -48,6 +48,10 @@ const importTasksBtn = document.getElementById("import-tasks-btn");
 const importUsersBtn = document.getElementById("import-users-btn");
 const importTasksArea = document.getElementById("import-tasks");
 const importUsersArea = document.getElementById("import-users");
+const importTasksFile = document.getElementById("import-tasks-file");
+const importUsersFile = document.getElementById("import-users-file");
+const importTasksCsvBtn = document.getElementById("import-tasks-csv-btn");
+const importUsersCsvBtn = document.getElementById("import-users-csv-btn");
 const registryMsgEl = document.getElementById("registry-msg");
 
 let lastStatus = null;
@@ -80,6 +84,111 @@ function populateSelect(selectEl, items, placeholder) {
     opt.textContent = item.name || item.id;
     selectEl.appendChild(opt);
   });
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (ch !== "\r") {
+      field += ch;
+    }
+  }
+  row.push(field);
+  if (row.length > 1 || row[0] !== "") {
+    rows.push(row);
+  }
+  return rows.filter((cells) => cells.some((cell) => cell.trim() !== ""));
+}
+
+function csvToTasks(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) return [];
+  const headers = rows.shift().map((h) => h.trim().toLowerCase().replace(/^\ufeff/, ""));
+  const nameIdx = headers.indexOf("name") >= 0 ? headers.indexOf("name") : headers.indexOf("task_name");
+  const descIdx = headers.indexOf("description") >= 0 ? headers.indexOf("description") : headers.indexOf("task_description");
+  let successIdx = headers.indexOf("success_criteria");
+  if (successIdx < 0) successIdx = headers.indexOf("success");
+  if (successIdx < 0) successIdx = headers.indexOf("criteria");
+  if (nameIdx < 0) {
+    throw new Error("CSV missing name column");
+  }
+  return rows
+    .map((row) => {
+      const name = (row[nameIdx] || "").trim();
+      if (!name) return null;
+      return {
+        name,
+        description: descIdx >= 0 ? (row[descIdx] || "").trim() : "",
+        success_criteria: successIdx >= 0 ? (row[successIdx] || "").trim() : "",
+      };
+    })
+    .filter(Boolean);
+}
+
+function csvToUsers(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) return [];
+  const headers = rows.shift().map((h) => h.trim().toLowerCase().replace(/^\ufeff/, ""));
+  let nameIdx = headers.indexOf("name");
+  if (nameIdx < 0) nameIdx = headers.indexOf("user");
+  if (nameIdx < 0) nameIdx = headers.indexOf("user_name");
+  const idIdx = headers.indexOf("id") >= 0 ? headers.indexOf("id") : headers.indexOf("uid");
+  if (nameIdx < 0) {
+    throw new Error("CSV missing name column");
+  }
+  return rows
+    .map((row) => {
+      const name = (row[nameIdx] || "").trim();
+      if (!name) return null;
+      const item = { name };
+      if (idIdx >= 0 && row[idIdx]) {
+        item.id = row[idIdx].trim();
+      }
+      return item;
+    })
+    .filter(Boolean);
+}
+
+async function importCsvFile(file, converter, endpoint, successMsg) {
+  if (!file) {
+    registryMsgEl.textContent = "Choose a CSV file first.";
+    return;
+  }
+  const text = await file.text();
+  const items = converter(text);
+  await apiRequest(endpoint, {
+    method: "POST",
+    body: JSON.stringify({ items, mode: "merge" }),
+  });
+  await loadRegistry();
+  registryMsgEl.textContent = successMsg;
 }
 
 async function loadRegistry() {
@@ -366,6 +475,32 @@ importUsersBtn.addEventListener("click", async () => {
     registryMsgEl.textContent = "Users imported.";
   } catch (err) {
     registryMsgEl.textContent = `User import error: ${err.message}`;
+  }
+});
+
+importTasksCsvBtn.addEventListener("click", async () => {
+  try {
+    await importCsvFile(
+      importTasksFile.files[0],
+      csvToTasks,
+      "/api/tasks/import",
+      "Tasks imported from CSV.",
+    );
+  } catch (err) {
+    registryMsgEl.textContent = `Task CSV import error: ${err.message}`;
+  }
+});
+
+importUsersCsvBtn.addEventListener("click", async () => {
+  try {
+    await importCsvFile(
+      importUsersFile.files[0],
+      csvToUsers,
+      "/api/users/import",
+      "Users imported from CSV.",
+    );
+  } catch (err) {
+    registryMsgEl.textContent = `User CSV import error: ${err.message}`;
   }
 });
 
