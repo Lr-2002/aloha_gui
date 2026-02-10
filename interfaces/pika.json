@@ -2,5 +2,5 @@
   "auto_start_stack": false,
   "require_sudo_password": false,
   "collect_max_timesteps": -1,
-  "collect_shell_template": "python collect_pika.py --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx} --max_timesteps {max_timesteps} --port /dev/ttyUSB81 --fisheye_index 81 --realsense_serial 230322270988 --width 640 --height 480 --fps 30 --tracker_id WM0"
+  "collect_shell_template": "python collect_pika.py --config interfaces/pika_devices.json --dataset_dir {dataset_dir} --task_name {task_name} --episode_idx {episode_idx} --max_timesteps {max_timesteps}"
 }

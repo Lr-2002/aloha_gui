@@ -35,6 +35,7 @@ def now_iso():
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="")
     parser.add_argument("--dataset_dir", default="")
     parser.add_argument("--task_name", default="")
     parser.add_argument("--episode_idx", type=int, default=0)
@@ -66,6 +67,59 @@ def resolve_dataset(args):
     return base_dir, episode_dir
 
 
+def load_device_config(path):
+    cfg_path = Path(path).expanduser()
+    if not cfg_path.is_absolute():
+        cfg_path = Path(__file__).resolve().parent / cfg_path
+    if not cfg_path.exists():
+        raise FileNotFoundError(f"Config not found: {cfg_path}")
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    if isinstance(data, list):
+        return data, {}
+    if isinstance(data, dict):
+        return data.get("devices") or [], data.get("defaults") or {}
+    return [], {}
+
+
+def build_devices(args):
+    defaults = {}
+    devices = []
+    if args.config:
+        devices, defaults = load_device_config(args.config)
+    if not devices:
+        devices = [{}]
+    output = []
+    existing = set()
+    for idx, item in enumerate(devices):
+        merged = dict(defaults)
+        merged.update(item or {})
+        name = merged.get("name") or f"device_{idx}"
+        if name in existing:
+            name = f"{name}_{idx}"
+        existing.add(name)
+        output.append(
+            {
+                "name": name,
+                "port": merged.get("port") or args.port,
+                "fisheye_index": merged.get("fisheye_index", args.fisheye_index),
+                "realsense_serial": merged.get("realsense_serial", args.realsense_serial),
+                "width": merged.get("width", args.width),
+                "height": merged.get("height", args.height),
+                "fps": merged.get("fps", args.fps),
+                "tracker_id": merged.get("tracker_id", args.tracker_id),
+                "enable_fisheye": merged.get("enable_fisheye", not args.no_fisheye),
+                "enable_realsense_color": merged.get(
+                    "enable_realsense_color", not args.no_realsense_color
+                ),
+                "enable_realsense_depth": merged.get(
+                    "enable_realsense_depth", not args.no_realsense_depth
+                ),
+                "enable_tracker": merged.get("enable_tracker", not args.no_tracker),
+            }
+        )
+    return output
+
+
 def main():
     args = parse_args()
     try:
@@ -81,49 +135,88 @@ def main():
         print(f"[error] missing dependencies: {exc}")
         return 1
 
-    SenseClass = load_sense_class()
-    sense = SenseClass(args.port) if args.port else SenseClass()
-    if not sense.connect():
-        print("[error] failed to connect Pika Sense")
+    devices = build_devices(args)
+    if not devices:
+        print("[error] no devices configured")
         return 1
 
-    sense.set_camera_param(args.width, args.height, args.fps)
-    if args.fisheye_index:
-        sense.set_fisheye_camera_index(args.fisheye_index)
-    if args.realsense_serial:
-        sense.set_realsense_serial_number(args.realsense_serial)
+    SenseClass = load_sense_class()
+    active = []
+    for device in devices:
+        sense = SenseClass(device["port"]) if device["port"] else SenseClass()
+        if not sense.connect():
+            print(f"[error] failed to connect Pika Sense on {device['port']}")
+            continue
+        sense.set_camera_param(device["width"], device["height"], device["fps"])
+        if device["fisheye_index"] is not None:
+            sense.set_fisheye_camera_index(device["fisheye_index"])
+        if device["realsense_serial"]:
+            sense.set_realsense_serial_number(device["realsense_serial"])
 
-    fisheye_camera = None if args.no_fisheye else sense.get_fisheye_camera()
-    realsense_camera = None if (args.no_realsense_color and args.no_realsense_depth) else sense.get_realsense_camera()
+        fisheye_camera = None if not device["enable_fisheye"] else sense.get_fisheye_camera()
+        realsense_camera = None
+        if device["enable_realsense_color"] or device["enable_realsense_depth"]:
+            realsense_camera = sense.get_realsense_camera()
 
-    tracker_id = "" if args.no_tracker else (args.tracker_id or "")
-    tracker_devices = []
-    if tracker_id:
-        tracker_devices = sense.get_tracker_devices()
+        tracker_id = device["tracker_id"] if device["enable_tracker"] else ""
+        tracker_devices = sense.get_tracker_devices() if tracker_id else []
 
-    frames_dir = episode_dir / "frames"
-    fisheye_dir = frames_dir / "fisheye"
-    rs_color_dir = frames_dir / "realsense_color"
-    rs_depth_dir = frames_dir / "realsense_depth"
-    if fisheye_camera:
-        fisheye_dir.mkdir(parents=True, exist_ok=True)
-    if realsense_camera and not args.no_realsense_color:
-        rs_color_dir.mkdir(parents=True, exist_ok=True)
-    if realsense_camera and not args.no_realsense_depth:
-        rs_depth_dir.mkdir(parents=True, exist_ok=True)
+        device_dir = episode_dir / device["name"]
+        frames_dir = device_dir / "frames"
+        fisheye_dir = frames_dir / "fisheye"
+        rs_color_dir = frames_dir / "realsense_color"
+        rs_depth_dir = frames_dir / "realsense_depth"
+        if fisheye_camera:
+            fisheye_dir.mkdir(parents=True, exist_ok=True)
+        if realsense_camera and device["enable_realsense_color"]:
+            rs_color_dir.mkdir(parents=True, exist_ok=True)
+        if realsense_camera and device["enable_realsense_depth"]:
+            rs_depth_dir.mkdir(parents=True, exist_ok=True)
 
-    meta = {
+        meta = {
+            "started_at": now_iso(),
+            "port": device["port"],
+            "fisheye_index": device["fisheye_index"],
+            "realsense_serial": device["realsense_serial"],
+            "width": device["width"],
+            "height": device["height"],
+            "fps": device["fps"],
+            "tracker_id": tracker_id,
+            "tracker_devices": tracker_devices,
+        }
+        device_dir.mkdir(parents=True, exist_ok=True)
+        (device_dir / "meta.json").write_text(
+            json.dumps(meta, indent=2), encoding="utf-8"
+        )
+
+        active.append(
+            {
+                "spec": device,
+                "sense": sense,
+                "fisheye": fisheye_camera,
+                "realsense": realsense_camera,
+                "tracker_id": tracker_id,
+                "poses_path": device_dir / "poses.jsonl",
+                "meta": meta,
+                "dirs": {
+                    "fisheye": fisheye_dir,
+                    "rs_color": rs_color_dir,
+                    "rs_depth": rs_depth_dir,
+                },
+            }
+        )
+
+    if not active:
+        print("[error] no devices connected")
+        return 1
+
+    root_meta = {
         "started_at": now_iso(),
-        "port": args.port,
-        "fisheye_index": args.fisheye_index,
-        "realsense_serial": args.realsense_serial,
-        "width": args.width,
-        "height": args.height,
-        "fps": args.fps,
-        "tracker_id": tracker_id,
-        "tracker_devices": tracker_devices,
+        "devices": [item["spec"] for item in active],
     }
-    (episode_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (episode_dir / "meta.json").write_text(
+        json.dumps(root_meta, indent=2), encoding="utf-8"
+    )
 
     stop_flag = {"value": False}
 
@@ -133,13 +226,16 @@ def main():
     signal.signal(signal.SIGINT, _handle_stop)
     signal.signal(signal.SIGTERM, _handle_stop)
 
-    poses_path = episode_dir / "poses.jsonl"
     step = 0
     last_frame_time = time.time()
     sleep_target = 1.0 / max(1, args.fps)
 
     try:
-        with poses_path.open("a", encoding="utf-8") as f:
+        files = []
+        for item in active:
+            f = item["poses_path"].open("a", encoding="utf-8")
+            files.append((item, f))
+        try:
             while True:
                 if stop_flag["value"]:
                     break
@@ -147,51 +243,61 @@ def main():
                     break
 
                 timestamp = now_iso()
-                record = {
-                    "timestep": step,
-                    "timestamp": timestamp,
-                    "frames": {},
-                    "pose": None,
-                }
+                any_data = False
+                for item, f in files:
+                    record = {
+                        "timestep": step,
+                        "timestamp": timestamp,
+                        "frames": {},
+                        "pose": None,
+                    }
+                    has_data = False
 
-                has_data = False
+                    fisheye_camera = item["fisheye"]
+                    realsense_camera = item["realsense"]
+                    tracker_id = item["tracker_id"]
+                    dirs = item["dirs"]
+                    spec = item["spec"]
 
-                if fisheye_camera:
-                    ok, frame = fisheye_camera.get_frame()
-                    if ok and frame is not None:
-                        path = fisheye_dir / f"{step:06d}.jpg"
-                        cv2.imwrite(str(path), frame)
-                        record["frames"]["fisheye"] = str(path.name)
-                        has_data = True
+                    if fisheye_camera:
+                        ok, frame = fisheye_camera.get_frame()
+                        if ok and frame is not None:
+                            path = dirs["fisheye"] / f"{step:06d}.jpg"
+                            cv2.imwrite(str(path), frame)
+                            record["frames"]["fisheye"] = str(path.name)
+                            has_data = True
 
-                if realsense_camera and not args.no_realsense_color:
-                    ok, frame = realsense_camera.get_color_frame()
-                    if ok and frame is not None:
-                        path = rs_color_dir / f"{step:06d}.jpg"
-                        cv2.imwrite(str(path), frame)
-                        record["frames"]["realsense_color"] = str(path.name)
-                        has_data = True
+                    if realsense_camera and spec["enable_realsense_color"]:
+                        ok, frame = realsense_camera.get_color_frame()
+                        if ok and frame is not None:
+                            path = dirs["rs_color"] / f"{step:06d}.jpg"
+                            cv2.imwrite(str(path), frame)
+                            record["frames"]["realsense_color"] = str(path.name)
+                            has_data = True
 
-                if realsense_camera and not args.no_realsense_depth:
-                    ok, depth = realsense_camera.get_depth_frame()
-                    if ok and depth is not None:
-                        path = rs_depth_dir / f"{step:06d}.npy"
-                        np.save(str(path), depth)
-                        record["frames"]["realsense_depth"] = str(path.name)
-                        has_data = True
+                    if realsense_camera and spec["enable_realsense_depth"]:
+                        ok, depth = realsense_camera.get_depth_frame()
+                        if ok and depth is not None:
+                            path = dirs["rs_depth"] / f"{step:06d}.npy"
+                            np.save(str(path), depth)
+                            record["frames"]["realsense_depth"] = str(path.name)
+                            has_data = True
 
-                if tracker_id:
-                    pose = sense.get_pose(tracker_id)
-                    if pose:
-                        record["pose"] = {
-                            "position": list(pose.position),
-                            "rotation": list(pose.rotation),
-                        }
-                        has_data = True
+                    if tracker_id:
+                        pose = item["sense"].get_pose(tracker_id)
+                        if pose:
+                            record["pose"] = {
+                                "position": list(pose.position),
+                                "rotation": list(pose.rotation),
+                            }
+                            has_data = True
 
-                if has_data:
-                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    f.flush()
+                    if has_data:
+                        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                        f.flush()
+                        any_data = True
+
+                if any_data:
                     step += 1
                     print(f"Frame data: {step}")
                 else:
@@ -202,11 +308,21 @@ def main():
                 if elapsed < sleep_target:
                     time.sleep(sleep_target - elapsed)
                 last_frame_time = time.time()
+        finally:
+            for _, f in files:
+                f.close()
 
     finally:
-        meta["ended_at"] = now_iso()
-        (episode_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-        sense.disconnect()
+        root_meta["ended_at"] = now_iso()
+        (episode_dir / "meta.json").write_text(
+            json.dumps(root_meta, indent=2), encoding="utf-8"
+        )
+        for item in active:
+            item["meta"]["ended_at"] = now_iso()
+            (item["poses_path"].parent / "meta.json").write_text(
+                json.dumps(item["meta"], indent=2), encoding="utf-8"
+            )
+            item["sense"].disconnect()
 
     if step == 0:
         print("Save failure, no data collected.")

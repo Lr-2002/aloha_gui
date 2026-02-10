@@ -1,0 +1,27 @@
+{
+  "defaults": {
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "enable_fisheye": true,
+    "enable_realsense_color": true,
+    "enable_realsense_depth": true,
+    "enable_tracker": true
+  },
+  "devices": [
+    {
+      "name": "left",
+      "port": "/dev/ttyUSB0",
+      "fisheye_index": 0,
+      "realsense_serial": "",
+      "tracker_id": "WM0"
+    },
+    {
+      "name": "right",
+      "port": "/dev/ttyUSB1",
+      "fisheye_index": 1,
+      "realsense_serial": "",
+      "tracker_id": "WM1"
+    }
+  ]
+}

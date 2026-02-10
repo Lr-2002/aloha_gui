@@ -183,6 +183,12 @@ Pika data is saved under `episode_<n>/` with:
 - `poses.jsonl`
 - `meta.json`
 
+Pika devices are configured in `interfaces/pika_devices.json`:
+
+- set `port` for each Pika Sense device (`/dev/ttyUSB0`, `/dev/ttyUSB1`, ...)
+- set `fisheye_index` and `realsense_serial`
+- set `tracker_id` (`WM0`, `WM1`, ...)
+
 ## Multi-server deployment (3 machines)
 
 Goal: same **users/tasks/interfaces**, separate **data**.
