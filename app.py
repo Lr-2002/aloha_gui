@@ -229,6 +229,43 @@ def merge_tasks(existing, incoming):
     return merged
 
 
+def load_users_from_csv(path):
+    csv_path = Path(path)
+    if not csv_path.exists():
+        return []
+    users = []
+    try:
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if not row:
+                    continue
+                name = (row.get("name") or row.get("user") or row.get("user_name") or "").strip()
+                if not name:
+                    continue
+                user_id = (row.get("id") or row.get("uid") or "").strip()
+                users.append({"id": user_id, "name": name})
+    except Exception:
+        return []
+    return users
+
+
+def merge_users(existing, incoming):
+    existing_ids = {u.get("id") for u in existing if u.get("id")}
+    merged = list(existing)
+    for item in incoming:
+        name = item.get("name") or ""
+        user_id = item.get("id") or generate_id(name, existing_ids)
+        existing_ids.add(user_id)
+        record = {"id": user_id, "name": name}
+        current = registry_get_item(merged, user_id)
+        if current:
+            current.update(record)
+        else:
+            merged.append(record)
+    return merged
+
+
 def seed_registry():
     with REGISTRY_LOCK:
         tasks = load_registry("tasks")
@@ -249,6 +286,17 @@ def seed_registry():
         if not interfaces:
             write_registry("interfaces", default_interfaces())
         users = load_registry("users")
+        users_csv_path = CONFIG.get("users_csv_path")
+        users_csv_mode = (CONFIG.get("users_csv_mode") or "replace").lower()
+        users_csv_autoload = bool(CONFIG.get("users_csv_autoload", False))
+        if users_csv_autoload and users_csv_path:
+            csv_users = load_users_from_csv(users_csv_path)
+            if csv_users:
+                if users_csv_mode == "merge":
+                    users = merge_users(users, csv_users)
+                else:
+                    users = merge_users([], csv_users)
+                write_registry("users", users)
         if not isinstance(users, list):
             write_registry("users", [])
 
@@ -266,6 +314,9 @@ def load_config():
         "tasks_csv_autoload": True,
         "tasks_csv_path": "EXAMPLE.CSV",
         "tasks_csv_mode": "replace",
+        "users_csv_autoload": True,
+        "users_csv_path": "USERS_EXAMPLE.CSV",
+        "users_csv_mode": "replace",
         "auto_start_stack": True,
         "require_sudo_password": False,
         "stack_workdir": "",
@@ -342,6 +393,7 @@ def load_config():
         "collect_workdir",
         "stack_workdir",
         "tasks_csv_path",
+        "users_csv_path",
     ):
         value = cfg.get(path_key)
         if value:

@@ -28,6 +28,9 @@ Edit `config.json`:
 - `tasks_csv_path`: CSV file for tasks (default `EXAMPLE.CSV`)
 - `tasks_csv_mode`: `replace` or `merge`
 - `tasks_csv_autoload`: load CSV on startup
+- `users_csv_path`: CSV file for users (default `USERS_EXAMPLE.CSV`)
+- `users_csv_mode`: `replace` or `merge`
+- `users_csv_autoload`: load CSV on startup
 
 Example shell template matching the default AgileX image paths (conda + ROS):
 
@@ -90,7 +93,7 @@ The UI manages three registries stored under `registry/`:
 - `interfaces.json`
 
 You can add users/tasks in the UI or import JSON arrays.
-Tasks can be auto-loaded from CSV on startup (default). See `EXAMPLE.CSV` for format and update `tasks_csv_path` if needed.
+Tasks and users can be auto-loaded from CSV on startup (default). See `EXAMPLE.CSV` and `USERS_EXAMPLE.CSV` for format and update `*_csv_path` if needed.
 
 ## Storage layout
 
