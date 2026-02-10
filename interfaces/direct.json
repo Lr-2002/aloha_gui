@@ -3,7 +3,7 @@
   "require_sudo_password": true,
   "stack_shell_login": false,
   "roscore_cmd": "source /opt/ros/noetic/setup.bash && roscore",
-  "camera_launch_cmd": "source /opt/ros/noetic/setup.bash && roslaunch astra_camera multi_camera_yann.launch",
+  "camera_launch_cmd": "source /opt/ros/noetic/setup.bash && cd ~/cobot_magic/camera_ws && source devel/setup.bash && roslaunch astra_camera multi_camera_yann.launch",
   "camera_cleanup_skip_if_topics_present": true,
   "camera_cleanup_skip_topics": [
     "/camera_l/color/image_raw",
@@ -14,5 +14,28 @@
   "arm_pre_cmd": "source /opt/ros/noetic/setup.bash && cd /home/agilex/cobot_magic/Piper_ros_private-ros-noetic && printf '%s\\n' \"$SUDO_PASSWORD\" | sudo -S bash can_muti_activate.sh",
   "arm_launch_cmd": "source /opt/ros/noetic/setup.bash && cd /home/agilex/cobot_magic/Piper_ros_private-ros-noetic && source devel/setup.bash && roslaunch piper start_ms_piper_yann.launch mode:=0 auto_enable:=false",
   "topic_check_on_start": false,
+  "required_topics": [
+    "/camera_l/color/image_raw",
+    "/camera_r/color/image_raw",
+    "/master/joint_left",
+    "/master/joint_right",
+    "/puppet/arm_status",
+    "/puppet/ee_euler_left",
+    "/puppet/ee_euler_right",
+    "/puppet/end_pose_left",
+    "/puppet/end_pose_right",
+    "/puppet/joint_left",
+    "/puppet/joint_right"
+  ],
+  "optional_topics": [
+    "/camera_l/color/camera_info",
+    "/camera_r/color/camera_info",
+    "/camera_l/depth/image_raw",
+    "/camera_r/depth/image_raw",
+    "/camera_l/depth/points",
+    "/camera_r/depth/points",
+    "/camera_l/ir/camera_info",
+    "/camera_r/ir/camera_info"
+  ],
   "collect_shell_template": "python /home/agilex/cobot_magic/teleop/collect.py --root {dataset_dir} --task {task_name}"
 }
