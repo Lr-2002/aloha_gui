@@ -806,10 +806,13 @@ class EpisodeRunner:
         self.process = None
         self.thread = None
 
-    def start(self, cmd, workdir, log_path, meta_dir, dataset_dir, episode_idx):
+    def start(
+        self, cmd, workdir, log_path, meta_dir, dataset_dir, episode_idx, requested_at=None
+    ):
         env = os.environ.copy()
         ensure_dir(log_path.parent)
         log_file = log_path.open("w", encoding="utf-8")
+        start_ts = time.time()
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -820,6 +823,8 @@ class EpisodeRunner:
             env=env,
         )
         self.process = proc
+        add_log_line(f"[info] collector_process_started pid={proc.pid}")
+        recording_logged = False
 
         def _reader():
             with log_file:
@@ -827,6 +832,15 @@ class EpisodeRunner:
                     line = line.rstrip()
                     with STATE_LOCK:
                         STATE["last_log"].append(line)
+                    nonlocal recording_logged
+                    if (
+                        not recording_logged
+                        and "STATUS: RECORDING" in line
+                    ):
+                        base = requested_at if requested_at is not None else start_ts
+                        elapsed = max(0.0, time.time() - base)
+                        add_log_line(f"[info] collector_recording_after {elapsed:.2f}s")
+                        recording_logged = True
                     log_file.write(line + "\n")
             proc.wait()
             episodes = scan_episode_indices(dataset_dir)
@@ -1769,6 +1783,7 @@ def api_episode_start():
     if running:
         add_log_line("[error] already_running")
         return jsonify({"ok": False, "error": "already_running"}), 409
+    request_ts = time.time()
     add_log_line("[info] episode_start_requested")
     if CONFIG.get("auto_start_stack", False) and CONFIG.get("stack_enabled", True):
         ok, err = ensure_stack_running()
@@ -1855,7 +1870,15 @@ def api_episode_start():
         }
     )
     try:
-        RUNNER.start(cmd, workdir, log_path, meta_dir, dataset_dir, next_episode)
+        RUNNER.start(
+            cmd,
+            workdir,
+            log_path,
+            meta_dir,
+            dataset_dir,
+            next_episode,
+            requested_at=request_ts,
+        )
     except FileNotFoundError as exc:
         add_log_line(f"[error] collect_launch_failed: {exc}")
         with STATE_LOCK:
