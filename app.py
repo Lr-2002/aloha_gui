@@ -538,6 +538,7 @@ STATE = {
     "last_exit": None,
     "last_error": None,
     "last_log": deque(maxlen=TAIL_LINES),
+    "start_debug": {},
     "episodes": [],
     "selected_episode": None,
     "last_replay": None,
@@ -824,6 +825,11 @@ class EpisodeRunner:
         )
         self.process = proc
         add_log_line(f"[info] collector_process_started pid={proc.pid}")
+        with STATE_LOCK:
+            start_debug = STATE.get("start_debug") or {}
+            start_debug["process_started_at"] = now_iso()
+            start_debug["pid"] = proc.pid
+            STATE["start_debug"] = start_debug
         recording_logged = False
 
         def _reader():
@@ -840,6 +846,11 @@ class EpisodeRunner:
                         base = requested_at if requested_at is not None else start_ts
                         elapsed = max(0.0, time.time() - base)
                         add_log_line(f"[info] collector_recording_after {elapsed:.2f}s")
+                        with STATE_LOCK:
+                            start_debug = STATE.get("start_debug") or {}
+                            start_debug["recording_at"] = now_iso()
+                            start_debug["recording_delay_s"] = round(elapsed, 2)
+                            STATE["start_debug"] = start_debug
                         recording_logged = True
                     log_file.write(line + "\n")
             proc.wait()
@@ -1542,6 +1553,7 @@ def api_status():
     data["collect_configured"] = bool(
         CONFIG.get("collect_shell_template") or CONFIG.get("collect_script")
     )
+    data["start_debug"] = STATE.get("start_debug") or {}
     data["stack_enabled"] = bool(CONFIG.get("stack_enabled", True))
     data["sudo_ready"] = bool(get_sudo_password())
     return jsonify(data)
@@ -1766,6 +1778,7 @@ def api_session_start():
         STATE["last_exit"] = None
         STATE["last_error"] = None
         STATE["last_log"].clear()
+        STATE["start_debug"] = {}
         STATE["selected_episode"] = None
         STATE["last_replay"] = None
     return jsonify({"ok": True, "session": session, "next_episode": next_episode})
@@ -1785,6 +1798,15 @@ def api_episode_start():
         return jsonify({"ok": False, "error": "already_running"}), 409
     request_ts = time.time()
     add_log_line("[info] episode_start_requested")
+    with STATE_LOCK:
+        STATE["start_debug"] = {
+            "requested_at": now_iso(),
+            "requested_ts": request_ts,
+            "process_started_at": None,
+            "recording_at": None,
+            "recording_delay_s": None,
+            "pid": None,
+        }
     if CONFIG.get("auto_start_stack", False) and CONFIG.get("stack_enabled", True):
         ok, err = ensure_stack_running()
         if not ok:

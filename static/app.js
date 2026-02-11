@@ -5,6 +5,7 @@ const sessionPathEl = document.getElementById("session-path");
 const currentEpisodeEl = document.getElementById("current-episode");
 const collectorStateEl = document.getElementById("collector-state");
 const episodeMsgEl = document.getElementById("episode-msg");
+const episodeDebugEl = document.getElementById("episode-debug");
 const episodeListEl = document.getElementById("episode-list");
 const randomMsgEl = document.getElementById("random-msg");
 const selectedEpisodeEl = document.getElementById("selected-episode");
@@ -255,6 +256,28 @@ function updateUI(data) {
     episodeMsgEl.textContent = `Collecting episode ${data.current_episode}...`;
   } else {
     episodeMsgEl.textContent = "Ready to start the next episode.";
+  }
+
+  if (episodeDebugEl) {
+    const dbg = data.start_debug || {};
+    if (dbg.requested_at) {
+      const parts = [`req ${dbg.requested_at}`];
+      if (dbg.process_started_at) {
+        parts.push(`proc ${dbg.process_started_at}`);
+      }
+      if (dbg.recording_at) {
+        parts.push(`rec ${dbg.recording_at}`);
+      }
+      if (dbg.recording_delay_s !== null && dbg.recording_delay_s !== undefined) {
+        parts.push(`delay ${dbg.recording_delay_s}s`);
+      }
+      if (dbg.pid) {
+        parts.push(`pid ${dbg.pid}`);
+      }
+      episodeDebugEl.textContent = parts.join(" | ");
+    } else {
+      episodeDebugEl.textContent = "-";
+    }
   }
 
   const episodes = data.episodes || [];
