@@ -1,26 +1,32 @@
 [
   {
-    "id": "insert-peg",
-    "name": "Insert Peg",
-    "description": "Insert a peg into a matching hole.",
-    "success_criteria": "Peg fully inserted and stable."
+    "id": "insert-lego",
+    "name": "Insert LEGO Brick (Single-Hand)",
+    "description": "Insert a LEGO cap onto a fixed LEGO base; the base is taped to the table with 3M.",
+    "success_criteria": "LEGO cap fully contacts the base and the base does not move."
   },
   {
-    "id": "pick-and-place",
-    "name": "Pick and Place",
-    "description": "Pick a single object and place it in a target zone.",
-    "success_criteria": "Object ends inside target zone without drop."
+    "id": "press-button",
+    "name": "Press Power Button (Single-Hand)",
+    "description": "Press the power-strip button taped to the table; a connected lamp should toggle.",
+    "success_criteria": "Lamp color/state changes after the press."
   },
   {
-    "id": "stack-blocks",
-    "name": "Stack Blocks",
-    "description": "Stack multiple blocks into a stable tower.",
-    "success_criteria": "All blocks stacked without collapse."
+    "id": "twist-light-bulb",
+    "name": "Twist Light Bulb (Bimanual)",
+    "description": "Rotate the bulb to secure it into the socket.",
+    "success_criteria": "Bulb lights up after insertion."
   },
   {
-    "id": "plug-connector",
-    "name": "Plug Connector",
-    "description": "Align and plug a connector into a socket.",
-    "success_criteria": "Connector fully seated and aligned."
+    "id": "pack-into-bag",
+    "name": "Pack Cookies into Bag (Bimanual)",
+    "description": "Open the bag and place the cookies inside.",
+    "success_criteria": "Cookies are inside the bag."
+  },
+  {
+    "id": "move-bottle",
+    "name": "Move Bottle Between Plates (Bimanual)",
+    "description": "Pick the bottle from the left fixed plate and place it onto the right fixed plate.",
+    "success_criteria": "Bottle ends on the right plate."
   }
 ]
