@@ -8,14 +8,14 @@
   "camera_cleanup_skip_topics": [
     "/camera_l/color/image_raw",
     "/camera_r/color/image_raw",
-    "/master/joint_left",
-    "/master/joint_right"
+    "/puppet/joint_left",
+    "/puppet/joint_right"
   ],
   "arm_pre_cmd": "source /opt/ros/noetic/setup.bash && cd /home/agilex/cobot_magic/Piper_ros_private-ros-noetic && printf '%s\\n' \"$SUDO_PASSWORD\" | sudo -S bash can_muti_activate.sh",
   "arm_launch_cmd": "source /opt/ros/noetic/setup.bash && cd /home/agilex/cobot_magic/Piper_ros_private-ros-noetic && source devel/setup.bash && roslaunch piper start_ms_piper_yann.launch mode:=0 auto_enable:=false",
   "topic_check_on_start": true,
   "require_topic_messages": true,
-  "master_topics": ["/master/joint_left", "/master/joint_right"],
+  "master_topics": ["/puppet/joint_left", "/puppet/joint_right"],
   "topic_data_ignore": [
     "/camera_l/color/image_raw",
     "/camera_r/color/image_raw",
@@ -23,16 +23,12 @@
     "/puppet/ee_euler_left",
     "/puppet/ee_euler_right",
     "/puppet/end_pose_left",
-    "/puppet/end_pose_right",
-    "/puppet/joint_left",
-    "/puppet/joint_right"
+    "/puppet/end_pose_right"
   ],
   "collect_shell_login": false,
   "required_topics": [
     "/camera_l/color/image_raw",
     "/camera_r/color/image_raw",
-    "/master/joint_left",
-    "/master/joint_right",
     "/puppet/arm_status",
     "/puppet/ee_euler_left",
     "/puppet/ee_euler_right",
