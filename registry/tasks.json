@@ -28,5 +28,23 @@
     "name": "Move Bottle Between Plates (Bimanual)",
     "description": "Pick the bottle from the left fixed plate and place it onto the right fixed plate.",
     "success_criteria": "Bottle ends on the right plate."
+  },
+  {
+    "id": "screw-assembly",
+    "name": "Screw Assembly (Bimanual)",
+    "description": "Pick screws and use the right-hand electric screwdriver to drive them into a fixed screw board with 10 screws.",
+    "success_criteria": "All screws are driven in; when the board is flipped"
+  },
+  {
+    "id": "tie-rope",
+    "name": "Tie Rope Knot",
+    "description": "Use the grippers to tie a knot with two ropes (varied rope types).",
+    "success_criteria": "A secure knot is formed on the rope."
+  },
+  {
+    "id": "ball-into-cup",
+    "name": "Place Ball into Cup",
+    "description": "Pick the ball from the left plate and place it into the cup on the right plate.",
+    "success_criteria": "Ball is inside the cup."
   }
 ]

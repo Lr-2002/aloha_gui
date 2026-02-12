@@ -152,7 +152,7 @@ Interface config:
 
 Per-session data (created under `data_root`):
 
-- `~/data/<user_id>/<task_id>/` (or your `data_root`)
+- `~/data/<user_id>/<interface_id>/<task_id>/` (or your `data_root`)
   - `episode_<n>/` (raw trajectory data produced by `collect_data.py`)
   - `.meta/session.json` (session fields incl. `interface_id`, `user_id`, `task_id`)
   - `.meta/episodes.jsonl` (start/end timestamps per episode)
@@ -321,6 +321,6 @@ Options:
 
 ## Notes
 
-- Episodes are stored under `~/data/<user>/<task>/`.
+- Episodes are stored under `~/data/<user>/<interface>/<task>/`.
 - The UI does not run replay. It only selects and prepares a replay payload.
 - To expose on the internet, put this behind a reverse proxy or use SSH port forwarding.

@@ -766,8 +766,8 @@ def stack_shell_args(cmd):
     return shell_args(cmd, bool(CONFIG.get("stack_shell_login", True)))
 
 
-def session_paths(user_id, task_name):
-    dataset_dir = Path(DATA_ROOT) / user_id / task_name
+def session_paths(user_id, interface_id, task_name):
+    dataset_dir = Path(DATA_ROOT) / user_id / interface_id / task_name
     meta_dir = dataset_dir / ".meta"
     logs_dir = meta_dir / "logs"
     return dataset_dir, meta_dir, logs_dir
@@ -1783,7 +1783,7 @@ def api_session_start():
     if not user or not task:
         return jsonify({"ok": False, "error": "invalid_user_or_task"}), 400
 
-    dataset_dir, meta_dir, logs_dir = session_paths(user_id, task_id)
+    dataset_dir, meta_dir, logs_dir = session_paths(user_id, interface_id, task_id)
     ensure_dir(dataset_dir)
     ensure_dir(meta_dir)
     ensure_dir(logs_dir)
