@@ -33,7 +33,7 @@
     "id": "screw-assembly",
     "name": "Screw Assembly (Bimanual)",
     "description": "Pick screws and use the right-hand electric screwdriver to drive them into a fixed screw board with 10 screws.",
-    "success_criteria": "All screws are driven in; when the board is flipped"
+    "success_criteria": "All screws are driven in; when the board is flipped no screws fall out."
   },
   {
     "id": "tie-rope",
