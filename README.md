@@ -44,6 +44,8 @@ Edit `config.json`:
 - `interfaces_csv_mode`: `replace` or `merge`
 - `interfaces_csv_autoload`: load CSV on startup
 - `auto_restore_session`: auto-load last session on startup
+- `auto_set_sudo`: set sudo password on startup
+- `default_sudo_password`: sudo password to auto-set
 
 `replace` means CSV is the only source; restarting overwrites manual edits. Use `merge` if you want to keep manual additions.
 

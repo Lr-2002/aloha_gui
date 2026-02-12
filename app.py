@@ -452,6 +452,8 @@ def load_config():
         "interfaces_csv_mode": "replace",
         "auto_restore_session": True,
         "auto_start_stack": True,
+        "auto_set_sudo": False,
+        "default_sudo_password": "",
         "require_sudo_password": False,
         "stack_enabled": True,
         "stack_workdir": "",
@@ -683,6 +685,11 @@ def set_sudo_password(value):
 def get_sudo_password():
     with SUDO_LOCK:
         return SUDO_PASSWORD
+
+
+if CONFIG.get("auto_set_sudo") and CONFIG.get("default_sudo_password"):
+    if not get_sudo_password():
+        set_sudo_password(CONFIG.get("default_sudo_password"))
 
 
 def build_env(clean=False):

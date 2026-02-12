@@ -18,6 +18,8 @@
   "interfaces_csv_mode": "replace",
   "auto_restore_session": true,
   "auto_start_stack": true,
+  "auto_set_sudo": true,
+  "default_sudo_password": "agx",
   "require_sudo_password": true,
   "stack_workdir": "",
   "stack_clean_env": true,
