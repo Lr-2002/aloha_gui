@@ -71,6 +71,27 @@ def write_registry(name, data):
     tmp_path.replace(path)
 
 
+def load_last_session():
+    path = REGISTRY_DIR / "last_session.json"
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_last_session(data):
+    ensure_registry_dir()
+    path = REGISTRY_DIR / "last_session.json"
+    tmp_path = path.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    tmp_path.replace(path)
+
+
 def generate_id(prefix, existing):
     base = re.sub(r"[^a-z0-9]+", "-", prefix.lower()).strip("-")
     if not base:
@@ -429,6 +450,7 @@ def load_config():
         "interfaces_csv_autoload": True,
         "interfaces_csv_path": "INTERFACES_EXAMPLE.CSV",
         "interfaces_csv_mode": "replace",
+        "auto_restore_session": True,
         "auto_start_stack": True,
         "require_sudo_password": False,
         "stack_enabled": True,
@@ -539,6 +561,7 @@ STATE = {
     "last_error": None,
     "last_log": deque(maxlen=TAIL_LINES),
     "start_debug": {},
+    "last_session": load_last_session(),
     "episodes": [],
     "selected_episode": None,
     "last_replay": None,
@@ -1542,6 +1565,7 @@ def api_status():
             "selected_episode": STATE["selected_episode"],
             "last_replay": STATE["last_replay"],
             "last_log": list(STATE["last_log"]),
+            "last_session": STATE.get("last_session"),
             "stack_running": STATE["stack_running"],
             "stack_processes": STATE["stack_processes"],
             "stack_log": list(STATE["stack_log"]),
@@ -1555,6 +1579,7 @@ def api_status():
     )
     data["start_debug"] = STATE.get("start_debug") or {}
     data["stack_enabled"] = bool(CONFIG.get("stack_enabled", True))
+    data["auto_restore_session"] = bool(CONFIG.get("auto_restore_session", False))
     data["sudo_ready"] = bool(get_sudo_password())
     return jsonify(data)
 
@@ -1769,6 +1794,12 @@ def api_session_start():
         "created_at": now_iso(),
     }
     write_meta(meta_dir, session)
+    last_session = {
+        "interface_id": interface_id,
+        "user_id": user_id,
+        "task_id": task_id,
+    }
+    write_last_session(last_session)
     with STATE_LOCK:
         STATE["session"] = session
         STATE["episodes"] = episodes
@@ -1779,6 +1810,7 @@ def api_session_start():
         STATE["last_error"] = None
         STATE["last_log"].clear()
         STATE["start_debug"] = {}
+        STATE["last_session"] = last_session
         STATE["selected_episode"] = None
         STATE["last_replay"] = None
     return jsonify({"ok": True, "session": session, "next_episode": next_episode})

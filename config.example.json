@@ -16,6 +16,7 @@
   "interfaces_csv_autoload": true,
   "interfaces_csv_path": "INTERFACES_EXAMPLE.CSV",
   "interfaces_csv_mode": "replace",
+  "auto_restore_session": true,
   "auto_start_stack": true,
   "require_sudo_password": true,
   "stack_workdir": "",

@@ -59,6 +59,7 @@ const registryMsgEl = document.getElementById("registry-msg");
 
 let lastStatus = null;
 let lastTasks = [];
+let autoRestoreAttempted = false;
 
 async function apiRequest(path, options = {}) {
   const response = await fetch(path, {
@@ -419,6 +420,48 @@ async function refreshStatus() {
   }
 }
 
+async function tryAutoRestoreSession() {
+  if (autoRestoreAttempted) {
+    return;
+  }
+  autoRestoreAttempted = true;
+  const status = lastStatus;
+  if (!status || status.session) {
+    return;
+  }
+  if (!status.auto_restore_session) {
+    return;
+  }
+  const last = status.last_session || {};
+  if (!last.interface_id || !last.user_id || !last.task_id) {
+    return;
+  }
+  if (interfaceSelect) {
+    interfaceSelect.value = last.interface_id;
+  }
+  if (userSelect) {
+    userSelect.value = last.user_id;
+  }
+  if (taskSelect) {
+    taskSelect.value = last.task_id;
+  }
+  updateUI(status);
+  try {
+    await apiRequest("/api/session/start", {
+      method: "POST",
+      body: JSON.stringify({
+        interface_id: last.interface_id,
+        user_id: last.user_id,
+        task_id: last.task_id,
+      }),
+    });
+    await refreshStatus();
+    episodeMsgEl.textContent = "Session auto-loaded.";
+  } catch (err) {
+    episodeMsgEl.textContent = `Auto-load error: ${err.message}`;
+  }
+}
+
 startSessionBtn.addEventListener("click", async () => {
   const interfaceId = interfaceSelect.value;
   const userId = userSelect.value;
@@ -706,5 +749,8 @@ copyStackLogBtn.addEventListener("click", async () => {
 
 taskSelect.addEventListener("change", () => updateUI(lastStatus || {}));
 
-loadRegistry().then(refreshStatus);
+loadRegistry().then(async () => {
+  await refreshStatus();
+  await tryAutoRestoreSession();
+});
 setInterval(refreshStatus, 2500);

@@ -43,6 +43,7 @@ Edit `config.json`:
 - `interfaces_csv_path`: CSV file for interfaces (default `INTERFACES_EXAMPLE.CSV`)
 - `interfaces_csv_mode`: `replace` or `merge`
 - `interfaces_csv_autoload`: load CSV on startup
+- `auto_restore_session`: auto-load last session on startup
 
 `replace` means CSV is the only source; restarting overwrites manual edits. Use `merge` if you want to keep manual additions.
 
