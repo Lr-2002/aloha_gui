@@ -189,6 +189,8 @@ Pika data is saved under `episode_<n>/` with:
 - `poses.jsonl`
 - `meta.json`
 
+Each `poses.jsonl` record includes `timestamp_ms` (epoch milliseconds).
+
 Pika devices are configured in `interfaces/pika_devices.json`:
 
 - set `sdk_root` to your Pika SDK path (e.g. `/home/agilex/pika_ws/pika_sdk`) or export `PIKA_SDK_ROOT`

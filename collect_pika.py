@@ -39,6 +39,10 @@ def now_iso():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def now_ms():
+    return int(time.time() * 1000)
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="")
@@ -188,6 +192,7 @@ def main():
 
         meta = {
             "started_at": now_iso(),
+            "started_at_ms": now_ms(),
             "port": device["port"],
             "fisheye_index": device["fisheye_index"],
             "realsense_serial": device["realsense_serial"],
@@ -231,6 +236,7 @@ def main():
 
     root_meta = {
         "started_at": now_iso(),
+        "started_at_ms": now_ms(),
         "devices": [item["spec"] for item in active],
     }
     (episode_dir / "meta.json").write_text(
@@ -263,12 +269,14 @@ def main():
                     break
 
                 timestamp = now_iso()
+                timestamp_ms = now_ms()
                 any_data = False
                 batch = []
                 for item, f in files:
                     record = {
                         "timestep": step,
                         "timestamp": timestamp,
+                        "timestamp_ms": timestamp_ms,
                         "frames": {},
                         "pose": None,
                     }
@@ -357,11 +365,13 @@ def main():
 
     finally:
         root_meta["ended_at"] = now_iso()
+        root_meta["ended_at_ms"] = now_ms()
         (episode_dir / "meta.json").write_text(
             json.dumps(root_meta, indent=2), encoding="utf-8"
         )
         for item in active:
             item["meta"]["ended_at"] = now_iso()
+            item["meta"]["ended_at_ms"] = now_ms()
             (item["poses_path"].parent / "meta.json").write_text(
                 json.dumps(item["meta"], indent=2), encoding="utf-8"
             )
