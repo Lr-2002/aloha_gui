@@ -219,7 +219,7 @@ def main():
 
         tracker_id = device["tracker_id"] if device["enable_tracker"] else ""
         tracker_devices = sense.get_tracker_devices() if tracker_id else []
-        if tracker_id and tracker_id not in tracker_devices:
+        if tracker_id and tracker_devices and tracker_id not in tracker_devices:
             print(
                 f"[warn] tracker_id {tracker_id} not detected for {device['name']} ({device['port']}); "
                 f"devices: {tracker_devices}"
@@ -227,12 +227,16 @@ def main():
         require_pose = bool(device["require_pose"]) and bool(tracker_id)
         if require_pose and tracker_id:
             deadline = time.time() + max(0.0, device["pose_start_timeout"])
-            while tracker_id not in tracker_devices and time.time() < deadline:
-                time.sleep(0.2)
-                tracker_devices = sense.get_tracker_devices() or []
-            if tracker_id not in tracker_devices:
+            pose_ok = False
+            while time.time() < deadline:
+                pose = sense.get_pose(tracker_id)
+                if pose:
+                    pose_ok = True
+                    break
+                time.sleep(0.1)
+            if not pose_ok:
                 fatal_error = (
-                    f"required tracker {tracker_id} not detected for {device['name']} "
+                    f"required tracker {tracker_id} pose missing for {device['name']} "
                     f"({device['port']})"
                 )
                 sense.disconnect()
