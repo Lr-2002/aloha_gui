@@ -1,5 +1,6 @@
 {
   "sdk_root": "/home/agilex/pika_ws/pika_sdk",
+  "shared_sense_port": "/dev/ttyUSB0",
   "defaults": {
     "width": 640,
     "height": 480,

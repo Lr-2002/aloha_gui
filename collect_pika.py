@@ -162,27 +162,60 @@ def main():
         devices_cfg, defaults_cfg, extras = load_device_config(args.config)
     sdk_root = args.sdk_root or extras.get("sdk_root") or os.environ.get("PIKA_SDK_ROOT")
     SenseClass = load_sense_class(sdk_root)
+    shared_sense_port = (extras.get("shared_sense_port") or "").strip()
     devices = build_devices(args, devices_cfg, defaults_cfg)
     if not devices:
         print("[error] no devices configured")
         return 1
     active = []
     fatal_error = None
+    shared_sense = None
+    shared_configured = False
+    shared_cameras = {"fisheye": None, "realsense": None}
+    if shared_sense_port:
+        shared_sense = SenseClass(shared_sense_port)
+        if not shared_sense.connect():
+            print(f"[error] failed to connect shared Sense on {shared_sense_port}")
+            return 1
     for device in devices:
-        sense = SenseClass(device["port"]) if device["port"] else SenseClass()
-        if not sense.connect():
-            print(f"[error] failed to connect Pika Sense on {device['port']}")
-            continue
-        sense.set_camera_param(device["width"], device["height"], device["fps"])
-        if device["fisheye_index"] is not None:
-            sense.set_fisheye_camera_index(device["fisheye_index"])
-        if device["realsense_serial"]:
-            sense.set_realsense_serial_number(device["realsense_serial"])
+        sense = shared_sense
+        if not sense:
+            sense = SenseClass(device["port"]) if device["port"] else SenseClass()
+            if not sense.connect():
+                print(f"[error] failed to connect Pika Sense on {device['port']}")
+                continue
+            sense.set_camera_param(device["width"], device["height"], device["fps"])
+            if device["fisheye_index"] is not None:
+                sense.set_fisheye_camera_index(device["fisheye_index"])
+            if device["realsense_serial"]:
+                sense.set_realsense_serial_number(device["realsense_serial"])
+        elif not shared_configured:
+            sense.set_camera_param(device["width"], device["height"], device["fps"])
+            if device["fisheye_index"] is not None:
+                sense.set_fisheye_camera_index(device["fisheye_index"])
+            if device["realsense_serial"]:
+                sense.set_realsense_serial_number(device["realsense_serial"])
+            shared_configured = True
 
-        fisheye_camera = None if not device["enable_fisheye"] else sense.get_fisheye_camera()
-        realsense_camera = None
-        if device["enable_realsense_color"] or device["enable_realsense_depth"]:
-            realsense_camera = sense.get_realsense_camera()
+        if shared_sense:
+            if not shared_configured:
+                shared_configured = True
+            if shared_cameras["fisheye"] is None:
+                shared_cameras["fisheye"] = (
+                    None if not device["enable_fisheye"] else sense.get_fisheye_camera()
+                )
+            if shared_cameras["realsense"] is None:
+                if device["enable_realsense_color"] or device["enable_realsense_depth"]:
+                    shared_cameras["realsense"] = sense.get_realsense_camera()
+            fisheye_camera = shared_cameras["fisheye"]
+            realsense_camera = shared_cameras["realsense"]
+        else:
+            fisheye_camera = (
+                None if not device["enable_fisheye"] else sense.get_fisheye_camera()
+            )
+            realsense_camera = None
+            if device["enable_realsense_color"] or device["enable_realsense_depth"]:
+                realsense_camera = sense.get_realsense_camera()
 
         tracker_id = device["tracker_id"] if device["enable_tracker"] else ""
         tracker_devices = sense.get_tracker_devices() if tracker_id else []
@@ -220,7 +253,7 @@ def main():
         meta = {
             "started_at": now_iso(),
             "started_at_ms": now_ms(),
-            "port": device["port"],
+            "port": shared_sense_port or device["port"],
             "fisheye_index": device["fisheye_index"],
             "realsense_serial": device["realsense_serial"],
             "width": device["width"],
@@ -228,6 +261,7 @@ def main():
             "fps": device["fps"],
             "tracker_id": tracker_id,
             "tracker_devices": tracker_devices,
+            "shared_sense_port": shared_sense_port,
             "require_pose": require_pose,
             "pose_miss_limit": device["pose_miss_limit"],
             "pose_start_timeout": device["pose_start_timeout"],
@@ -265,7 +299,10 @@ def main():
 
     if fatal_error:
         for item in active:
-            item["sense"].disconnect()
+            if not shared_sense or item["sense"] is not shared_sense:
+                item["sense"].disconnect()
+        if shared_sense:
+            shared_sense.disconnect()
         print(f"[error] {fatal_error}")
         return 1
 
@@ -433,7 +470,10 @@ def main():
             (item["poses_path"].parent / "meta.json").write_text(
                 json.dumps(item["meta"], indent=2), encoding="utf-8"
             )
-            item["sense"].disconnect()
+            if not shared_sense or item["sense"] is not shared_sense:
+                item["sense"].disconnect()
+        if shared_sense:
+            shared_sense.disconnect()
 
     if step == 0:
         print("Save failure, no data collected.")
