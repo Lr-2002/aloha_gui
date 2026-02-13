@@ -177,6 +177,11 @@ def main():
 
         tracker_id = device["tracker_id"] if device["enable_tracker"] else ""
         tracker_devices = sense.get_tracker_devices() if tracker_id else []
+        if tracker_id and tracker_id not in tracker_devices:
+            print(
+                f"[warn] tracker_id {tracker_id} not detected for {device['name']} ({device['port']}); "
+                f"devices: {tracker_devices}"
+            )
 
         device_dir = episode_dir / device["name"]
         frames_dir = device_dir / "frames"
@@ -214,6 +219,7 @@ def main():
                 "fisheye": fisheye_camera,
                 "realsense": realsense_camera,
                 "tracker_id": tracker_id,
+                "miss_counts": {"pose": 0},
                 "fail_counts": {"fisheye": 0, "rs_color": 0, "rs_depth": 0},
                 "disabled": {
                     "fisheye": not bool(fisheye_camera),
@@ -340,6 +346,14 @@ def main():
                                 "rotation": list(pose.rotation),
                             }
                             has_data = True
+                            item["miss_counts"]["pose"] = 0
+                        else:
+                            item["miss_counts"]["pose"] += 1
+                            if item["miss_counts"]["pose"] in (1, 30, 300):
+                                print(
+                                    f"[warn] no pose for {tracker_id} "
+                                    f"({spec['name']} {spec['port']})"
+                                )
 
                     batch.append((f, record, has_data))
                     if has_data:
