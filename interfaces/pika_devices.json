@@ -5,8 +5,8 @@
     "width": 640,
     "height": 480,
     "fps": 30,
-    "enable_fisheye": false,
-    "enable_realsense_color": false,
+    "enable_fisheye": true,
+    "enable_realsense_color": true,
     "enable_realsense_depth": false,
     "enable_tracker": true,
     "require_pose": true,
@@ -26,7 +26,10 @@
       "port": "/dev/ttyUSB1",
       "fisheye_index": 1,
       "realsense_serial": "",
-      "tracker_id": "T21"
+      "tracker_id": "T21",
+      "enable_fisheye": false,
+      "enable_realsense_color": false,
+      "enable_realsense_depth": false
     }
   ]
 }
