@@ -60,6 +60,9 @@ def parse_args():
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--tracker_id", default="WM0")
+    parser.add_argument("--require_pose", action="store_true")
+    parser.add_argument("--pose_miss_limit", type=int, default=30)
+    parser.add_argument("--pose_start_timeout", type=float, default=5.0)
     parser.add_argument("--no_fisheye", action="store_true")
     parser.add_argument("--no_realsense_color", action="store_true")
     parser.add_argument("--no_realsense_depth", action="store_true")
@@ -119,6 +122,11 @@ def build_devices(args, devices=None, defaults=None):
                 "height": merged.get("height", args.height),
                 "fps": merged.get("fps", args.fps),
                 "tracker_id": merged.get("tracker_id", args.tracker_id),
+                "require_pose": merged.get("require_pose", args.require_pose),
+                "pose_miss_limit": int(merged.get("pose_miss_limit", args.pose_miss_limit)),
+                "pose_start_timeout": float(
+                    merged.get("pose_start_timeout", args.pose_start_timeout)
+                ),
                 "enable_fisheye": merged.get("enable_fisheye", not args.no_fisheye),
                 "enable_realsense_color": merged.get(
                     "enable_realsense_color", not args.no_realsense_color
@@ -159,6 +167,7 @@ def main():
         print("[error] no devices configured")
         return 1
     active = []
+    fatal_error = None
     for device in devices:
         sense = SenseClass(device["port"]) if device["port"] else SenseClass()
         if not sense.connect():
@@ -182,6 +191,19 @@ def main():
                 f"[warn] tracker_id {tracker_id} not detected for {device['name']} ({device['port']}); "
                 f"devices: {tracker_devices}"
             )
+        require_pose = bool(device["require_pose"]) and bool(tracker_id)
+        if require_pose and tracker_id:
+            deadline = time.time() + max(0.0, device["pose_start_timeout"])
+            while tracker_id not in tracker_devices and time.time() < deadline:
+                time.sleep(0.2)
+                tracker_devices = sense.get_tracker_devices() or []
+            if tracker_id not in tracker_devices:
+                fatal_error = (
+                    f"required tracker {tracker_id} not detected for {device['name']} "
+                    f"({device['port']})"
+                )
+                sense.disconnect()
+                break
 
         device_dir = episode_dir / device["name"]
         frames_dir = device_dir / "frames"
@@ -206,6 +228,9 @@ def main():
             "fps": device["fps"],
             "tracker_id": tracker_id,
             "tracker_devices": tracker_devices,
+            "require_pose": require_pose,
+            "pose_miss_limit": device["pose_miss_limit"],
+            "pose_start_timeout": device["pose_start_timeout"],
         }
         device_dir.mkdir(parents=True, exist_ok=True)
         (device_dir / "meta.json").write_text(
@@ -219,6 +244,8 @@ def main():
                 "fisheye": fisheye_camera,
                 "realsense": realsense_camera,
                 "tracker_id": tracker_id,
+                "require_pose": require_pose,
+                "pose_miss_limit": device["pose_miss_limit"],
                 "miss_counts": {"pose": 0},
                 "fail_counts": {"fisheye": 0, "rs_color": 0, "rs_depth": 0},
                 "disabled": {
@@ -235,6 +262,12 @@ def main():
                 },
             }
         )
+
+    if fatal_error:
+        for item in active:
+            item["sense"].disconnect()
+        print(f"[error] {fatal_error}")
+        return 1
 
     if not active:
         print("[error] no devices connected")
@@ -354,10 +387,21 @@ def main():
                                     f"[warn] no pose for {tracker_id} "
                                     f"({spec['name']} {spec['port']})"
                                 )
+                            if item["require_pose"] and item["miss_counts"]["pose"] >= item[
+                                "pose_miss_limit"
+                            ]:
+                                fatal_error = (
+                                    f"pose missing for {tracker_id} "
+                                    f"({spec['name']} {spec['port']})"
+                                )
 
                     batch.append((f, record, has_data))
                     if has_data:
                         any_data = True
+
+                if fatal_error:
+                    print(f"[error] {fatal_error}")
+                    break
 
                 if any_data:
                     for f, record, _ in batch:

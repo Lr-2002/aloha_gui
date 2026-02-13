@@ -7,7 +7,10 @@
     "enable_fisheye": true,
     "enable_realsense_color": true,
     "enable_realsense_depth": true,
-    "enable_tracker": true
+    "enable_tracker": true,
+    "require_pose": true,
+    "pose_miss_limit": 30,
+    "pose_start_timeout": 5.0
   },
   "devices": [
     {
