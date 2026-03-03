@@ -1,0 +1,19 @@
+{
+  "auto_start_stack": false,
+  "require_sudo_password": false,
+  "stack_enabled": false,
+  "collector_backend": "dataarm",
+  "dataarm_run_module": "control.run_robot",
+  "dataarm_python_bin": "python3",
+  "dataarm_workdir": "/home/lr-2002/project/DataArm/dataarm",
+  "dataarm_config_path": "control/config_examples/system_dual_arm.yaml",
+  "dataarm_api_mode": "dual",
+  "dataarm_arms": "left_arm,right_arm",
+  "dataarm_mode": "teach",
+  "dataarm_headless": true,
+  "dataarm_record": true,
+  "dataarm_duration": 0,
+  "dataarm_mid_fix_template": "{user_id}/{task_id}",
+  "dataarm_extra_args": [],
+  "dataarm_env": {}
+}

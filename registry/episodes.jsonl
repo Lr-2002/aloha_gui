@@ -1,0 +1,12 @@
+{"event": "start", "timestamp": "2026-03-03T11:28:55Z", "interface_id": "dataarm", "task_id": "insert-peg", "user_id": "alice", "episode_id": 0, "storage_path": "/home/lr-2002/data/alice/insert-peg", "storage_name": "episode_0"}
+{"event": "stop_requested", "timestamp": "2026-03-03T11:29:28Z", "interface_id": "dataarm", "task_id": "insert-peg", "user_id": "alice", "episode_id": 0}
+{"event": "end", "timestamp": "2026-03-03T11:29:34Z", "interface_id": "dataarm", "task_id": "insert-peg", "user_id": "alice", "episode_id": 0, "exit_code": 0}
+{"event": "start", "timestamp": "2026-03-03T11:37:50Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 0, "storage_path": "/home/lr-2002/data/chen/pick-and-place", "storage_name": "episode_0"}
+{"event": "stop_requested", "timestamp": "2026-03-03T11:37:54Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 0}
+{"event": "end", "timestamp": "2026-03-03T11:37:57Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 0, "exit_code": 0}
+{"event": "start", "timestamp": "2026-03-03T11:37:59Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 1, "storage_path": "/home/lr-2002/data/chen/pick-and-place", "storage_name": "episode_1"}
+{"event": "stop_requested", "timestamp": "2026-03-03T11:38:03Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 1}
+{"event": "end", "timestamp": "2026-03-03T11:38:06Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 1, "exit_code": 0}
+{"event": "start", "timestamp": "2026-03-03T11:38:08Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 2, "storage_path": "/home/lr-2002/data/chen/pick-and-place", "storage_name": "episode_2"}
+{"event": "stop_requested", "timestamp": "2026-03-03T11:38:12Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 2}
+{"event": "end", "timestamp": "2026-03-03T11:38:15Z", "interface_id": "dataarm", "task_id": "pick-and-place", "user_id": "chen", "episode_id": 2, "exit_code": 0}

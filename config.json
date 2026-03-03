@@ -13,11 +13,15 @@
   "users_csv_autoload": true,
   "users_csv_path": "USERS_EXAMPLE.CSV",
   "users_csv_mode": "replace",
+  "interfaces_csv_autoload": true,
+  "interfaces_csv_path": "INTERFACES_EXAMPLE.CSV",
+  "interfaces_csv_mode": "replace",
   "auto_start_stack": true,
   "require_sudo_password": true,
   "stack_workdir": "",
   "stack_clean_env": true,
   "stack_env_path": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  "stack_shell_login": true,
   "stack_python_bin": "/home/agilex/miniconda3/envs/aloha/bin/python3",
   "stack_pythonpath": "",
   "stack_pythonpath_auto": true,
@@ -39,6 +43,8 @@
   "camera_cleanup_required": true,
   "camera_cleanup_use_sudo": true,
   "camera_cleanup_extra_cmd": "",
+  "camera_cleanup_skip_if_topics_present": false,
+  "camera_cleanup_skip_topics": [],
   "rosnode_list_cmd": "source /opt/ros/noetic/setup.bash && rosnode list",
   "topic_check_cmd": "source /opt/ros/noetic/setup.bash && rostopic list",
   "topic_check_on_start": false,
@@ -85,5 +91,6 @@
   "topic_check_retries": 5,
   "topic_check_delay": 1,
   "stack_start_delay": 2,
-  "tail_lines": 200
+  "tail_lines": 200,
+  "collect_shell_login": true
 }

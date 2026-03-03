@@ -19,5 +19,12 @@
     "type": "pika",
     "description": "Pika Sense camera + Vive tracker collection.",
     "config_path": "interfaces/pika.json"
+  },
+  {
+    "id": "dataarm",
+    "name": "DataArm",
+    "type": "dataarm",
+    "description": "DataArm dual-arm run_robot collection.",
+    "config_path": "interfaces/dataarm.json"
   }
 ]

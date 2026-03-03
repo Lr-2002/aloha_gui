@@ -184,7 +184,15 @@ def default_interfaces():
             "name": "Aloha",
             "type": "aloha",
             "description": "Aloha data collection interface.",
-        }
+            "config_path": "interfaces/aloha.json",
+        },
+        {
+            "id": "dataarm",
+            "name": "DataArm",
+            "type": "dataarm",
+            "description": "DataArm dual-arm run_robot collection.",
+            "config_path": "interfaces/dataarm.json",
+        },
     ]
 
 
@@ -418,8 +426,22 @@ def load_config():
         "collect_workdir": "",
         "collect_extra_args": [],
         "collect_shell_template": "",
+        "collector_backend": "script",
         "collect_max_timesteps": -1,
         "replay_shell_template": "",
+        "dataarm_run_module": "control.run_robot",
+        "dataarm_python_bin": "python3",
+        "dataarm_config_path": "control/config_examples/system_dual_arm.yaml",
+        "dataarm_workdir": "",
+        "dataarm_api_mode": "dual",
+        "dataarm_arms": "left_arm,right_arm",
+        "dataarm_mode": "teach",
+        "dataarm_headless": True,
+        "dataarm_record": True,
+        "dataarm_duration": 0,
+        "dataarm_mid_fix_template": "{user_id}/{task_id}",
+        "dataarm_extra_args": [],
+        "dataarm_env": {},
         "tasks_csv_autoload": True,
         "tasks_csv_path": "EXAMPLE.CSV",
         "tasks_csv_mode": "replace",
@@ -508,6 +530,7 @@ def load_config():
         "data_root",
         "collect_script",
         "collect_workdir",
+        "dataarm_workdir",
         "stack_workdir",
         "tasks_csv_path",
         "users_csv_path",
@@ -570,6 +593,8 @@ STATE = {
         "last_run": None,
         "error": None,
     },
+    "gc_session_running": False,
+    "gc_session_pid": None,
 }
 
 
@@ -583,6 +608,7 @@ def apply_config_overrides(overrides):
         "data_root",
         "collect_script",
         "collect_workdir",
+        "dataarm_workdir",
         "stack_workdir",
         "tasks_csv_path",
         "users_csv_path",
@@ -766,7 +792,161 @@ def append_event(meta_dir, data):
         f.write(json.dumps(data) + "\n")
 
 
-def build_collect_command(dataset_dir, task_name, episode_idx):
+def _to_bool(value, default=False):
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
+
+
+def _sanitize_mid_fix(value):
+    if not value:
+        return ""
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    p = Path(raw)
+    if p.is_absolute():
+        return ""
+    if any(part == ".." for part in p.parts):
+        return ""
+    return raw
+
+
+def _current_collector_backend():
+    return str(CONFIG.get("collector_backend", "script")).strip().lower() or "script"
+
+
+def _build_dataarm_collect_command(dataset_dir, task_name, episode_idx, session=None, collector_params=None):
+    params = dict(collector_params or {})
+    run_module = str(
+        params.get("run_module")
+        or CONFIG.get("dataarm_run_module")
+        or "control.run_robot"
+    ).strip()
+    python_bin = str(
+        params.get("python_bin")
+        or CONFIG.get("dataarm_python_bin")
+        or CONFIG.get("python_bin")
+        or "python3"
+    ).strip()
+    config_path = str(
+        params.get("config")
+        or params.get("config_path")
+        or CONFIG.get("dataarm_config_path")
+        or "control/config_examples/system_dual_arm.yaml"
+    ).strip()
+    api_mode = str(
+        params.get("api_mode")
+        or CONFIG.get("dataarm_api_mode")
+        or "dual"
+    ).strip()
+    arms = str(
+        params.get("arms")
+        or CONFIG.get("dataarm_arms")
+        or "left_arm,right_arm"
+    ).strip()
+    mode = str(
+        params.get("mode")
+        or CONFIG.get("dataarm_mode")
+        or "teach"
+    ).strip()
+    headless = _to_bool(
+        params.get("headless"),
+        _to_bool(CONFIG.get("dataarm_headless"), True),
+    )
+    record = _to_bool(
+        params.get("record"),
+        _to_bool(CONFIG.get("dataarm_record"), True),
+    )
+    duration = params.get("duration", CONFIG.get("dataarm_duration", 0))
+    try:
+        duration = int(duration or 0)
+    except Exception:
+        duration = 0
+
+    session_ctx = session or {}
+    template = str(
+        params.get("mid_fix_template")
+        or CONFIG.get("dataarm_mid_fix_template")
+        or "{user_id}/{task_id}"
+    )
+    mid_fix_value = (
+        params.get("mid_fix")
+        or template.format(
+            user_id=session_ctx.get("user_id", ""),
+            task_id=session_ctx.get("task_id", task_name),
+            task_name=session_ctx.get("task_name", task_name),
+            interface_id=session_ctx.get("interface_id", "dataarm"),
+            episode_idx=episode_idx,
+        )
+    )
+    mid_fix = _sanitize_mid_fix(mid_fix_value)
+
+    cmd = [python_bin, "-m", run_module]
+    if config_path:
+        cmd.extend(["--config", config_path])
+    if api_mode:
+        cmd.extend(["--api-mode", api_mode])
+    if arms:
+        cmd.extend(["--arms", arms])
+    if mode:
+        cmd.extend(["--mode", mode])
+    if headless:
+        cmd.append("--headless")
+    if duration > 0:
+        cmd.extend(["--duration", str(duration)])
+    if record:
+        cmd.append("--record")
+    else:
+        cmd.append("--no-record")
+    if mid_fix:
+        cmd.extend(["--mid_fix", mid_fix])
+
+    extra_args = params.get("extra_args", CONFIG.get("dataarm_extra_args") or [])
+    if isinstance(extra_args, list):
+        cmd.extend([str(x) for x in extra_args if str(x).strip()])
+
+    env_overrides = {}
+    if session_ctx and session_ctx.get("dataset_dir"):
+        try:
+            session_dir = Path(session_ctx["dataset_dir"]).resolve()
+            if len(session_dir.parents) >= 2:
+                env_overrides["DATAARM_DATA"] = str(session_dir.parents[1])
+        except Exception:
+            pass
+    env_cfg = CONFIG.get("dataarm_env") or {}
+    if isinstance(env_cfg, dict):
+        for k, v in env_cfg.items():
+            if v is None:
+                continue
+            env_overrides[str(k)] = str(v)
+    env_params = params.get("env") or {}
+    if isinstance(env_params, dict):
+        for k, v in env_params.items():
+            if v is None:
+                continue
+            env_overrides[str(k)] = str(v)
+
+    return cmd, env_overrides
+
+
+def build_collect_command(dataset_dir, task_name, episode_idx, session=None, collector_params=None):
+    backend = _current_collector_backend()
+    if backend in {"dataarm", "run_robot", "run-robot"}:
+        cmd, env_overrides = _build_dataarm_collect_command(
+            dataset_dir, task_name, episode_idx, session=session, collector_params=collector_params
+        )
+        return cmd, env_overrides, "dataarm"
+
     if CONFIG.get("collect_shell_template"):
         template = CONFIG["collect_shell_template"]
         cmd = template.format(
@@ -780,9 +960,9 @@ def build_collect_command(dataset_dir, task_name, episode_idx):
         use_login = bool(
             CONFIG.get("collect_shell_login", CONFIG.get("stack_shell_login", True))
         )
-        return shell_args(cmd, use_login)
+        return shell_args(cmd, use_login), {}, "script"
     if not CONFIG.get("collect_script"):
-        return None
+        return None, {}, "script"
     cmd = [
         CONFIG.get("python_bin", "python3"),
         CONFIG["collect_script"],
@@ -798,7 +978,7 @@ def build_collect_command(dataset_dir, task_name, episode_idx):
         cmd.extend(["--max_timesteps", str(max_steps)])
     extra = CONFIG.get("collect_extra_args") or []
     cmd.extend(extra)
-    return cmd
+    return cmd, {}, "script"
 
 
 class EpisodeRunner:
@@ -806,8 +986,13 @@ class EpisodeRunner:
         self.process = None
         self.thread = None
 
-    def start(self, cmd, workdir, log_path, meta_dir, dataset_dir, episode_idx):
+    def start(self, cmd, workdir, log_path, meta_dir, dataset_dir, episode_idx, extra_env=None):
         env = os.environ.copy()
+        if isinstance(extra_env, dict):
+            for key, value in extra_env.items():
+                if value is None:
+                    continue
+                env[str(key)] = str(value)
         ensure_dir(log_path.parent)
         log_file = log_path.open("w", encoding="utf-8")
         proc = subprocess.Popen(
@@ -875,6 +1060,106 @@ class EpisodeRunner:
 
 
 RUNNER = EpisodeRunner()
+
+
+class DataArmSessionRunner:
+    def __init__(self):
+        self.process = None
+        self.thread = None
+
+    def is_running(self):
+        return self.process is not None and self.process.poll() is None
+
+    def start(self, cmd, workdir, log_path, extra_env=None):
+        if self.is_running():
+            return False, "already_running"
+        env = os.environ.copy()
+        if isinstance(extra_env, dict):
+            for key, value in extra_env.items():
+                if value is None:
+                    continue
+                env[str(key)] = str(value)
+        ensure_dir(log_path.parent)
+        log_file = log_path.open("w", encoding="utf-8")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=workdir or None,
+                text=True,
+                bufsize=1,
+                env=env,
+            )
+        except Exception as exc:
+            try:
+                log_file.close()
+            except Exception:
+                pass
+            return False, str(exc)
+        self.process = proc
+        with STATE_LOCK:
+            STATE["gc_session_running"] = True
+            STATE["gc_session_pid"] = proc.pid
+
+        def _reader():
+            with log_file:
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    with STATE_LOCK:
+                        STATE["last_log"].append(f"[session] {line}")
+                    log_file.write(line + "\n")
+            proc.wait()
+            with STATE_LOCK:
+                STATE["gc_session_running"] = False
+                STATE["gc_session_pid"] = None
+            self.process = None
+
+        thread = threading.Thread(target=_reader, daemon=True)
+        self.thread = thread
+        thread.start()
+        return True, None
+
+    def send_signal(self, sig):
+        if not self.is_running():
+            return False
+        try:
+            self.process.send_signal(sig)
+            return True
+        except Exception:
+            return False
+
+    def stop(self):
+        if not self.process:
+            return False
+        proc = self.process
+        try:
+            if proc.poll() is not None:
+                return False
+            proc.send_signal(signal.SIGINT)
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.05)
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1.0)
+                except Exception:
+                    pass
+            if proc.poll() is None:
+                proc.kill()
+            return True
+        except Exception:
+            return False
+
+
+SESSION_RUNNER = DataArmSessionRunner()
+
+
+def _is_dataarm_backend():
+    return _current_collector_backend() in {"dataarm", "run_robot", "run-robot"}
 
 
 class StackRunner:
@@ -1523,11 +1808,31 @@ def api_status():
             "topic_status": STATE["topic_status"],
             "master_status": STATE["master_status"],
             "camera_cleanup_status": STATE["camera_cleanup_status"],
+            "gc_session_running": STATE["gc_session_running"],
+            "gc_session_pid": STATE["gc_session_pid"],
         }
     data["data_root"] = DATA_ROOT
-    data["collect_configured"] = bool(
-        CONFIG.get("collect_shell_template") or CONFIG.get("collect_script")
-    )
+    collector_backend = _current_collector_backend()
+    if collector_backend in {"dataarm", "run_robot", "run-robot"}:
+        collect_configured = bool(CONFIG.get("dataarm_run_module"))
+    else:
+        collect_configured = bool(
+            CONFIG.get("collect_shell_template") or CONFIG.get("collect_script")
+        )
+    data["collect_configured"] = collect_configured
+    data["collector_backend"] = collector_backend
+    data["dataarm_defaults"] = {
+        "run_module": CONFIG.get("dataarm_run_module"),
+        "python_bin": CONFIG.get("dataarm_python_bin"),
+        "config_path": CONFIG.get("dataarm_config_path"),
+        "api_mode": CONFIG.get("dataarm_api_mode"),
+        "arms": CONFIG.get("dataarm_arms"),
+        "mode": CONFIG.get("dataarm_mode"),
+        "headless": CONFIG.get("dataarm_headless"),
+        "record": CONFIG.get("dataarm_record"),
+        "duration": CONFIG.get("dataarm_duration"),
+        "mid_fix_template": CONFIG.get("dataarm_mid_fix_template"),
+    }
     data["stack_enabled"] = bool(CONFIG.get("stack_enabled", True))
     data["sudo_ready"] = bool(get_sudo_password())
     return jsonify(data)
@@ -1675,6 +1980,9 @@ def api_sudo():
 @app.route("/api/session/start", methods=["POST"])
 def api_session_start():
     payload = request.get_json(silent=True) or {}
+    with STATE_LOCK:
+        if STATE.get("running"):
+            return jsonify({"ok": False, "error": "episode_running"}), 409
     interface_id = sanitize_token(payload.get("interface_id")) or "aloha"
     user_id = sanitize_token(payload.get("user_id"))
     task_id = sanitize_token(payload.get("task_id"))
@@ -1741,6 +2049,7 @@ def api_session_start():
         "task_name": task.get("name"),
         "dataset_dir": str(dataset_dir),
         "created_at": now_iso(),
+        "collector_params": payload.get("collector_params") if isinstance(payload.get("collector_params"), dict) else {},
     }
     write_meta(meta_dir, session)
     with STATE_LOCK:
@@ -1754,11 +2063,151 @@ def api_session_start():
         STATE["last_log"].clear()
         STATE["selected_episode"] = None
         STATE["last_replay"] = None
-    return jsonify({"ok": True, "session": session, "next_episode": next_episode})
+        STATE["gc_session_running"] = False
+        STATE["gc_session_pid"] = None
+
+    if SESSION_RUNNER.is_running():
+        SESSION_RUNNER.stop()
+        time.sleep(0.15)
+
+    gc_started = False
+    gc_cmd = None
+    if _is_dataarm_backend():
+        bootstrap_params = dict(session.get("collector_params") or {})
+        bootstrap_params["record"] = False
+        bootstrap_params.setdefault("mode", "teach")
+        bootstrap_params.setdefault("headless", True)
+        bootstrap_params["duration"] = 0
+        cmd, env_overrides, collector_backend = build_collect_command(
+            dataset_dir.parent,
+            session["task_id"],
+            next_episode,
+            session=session,
+            collector_params=bootstrap_params,
+        )
+        gc_cmd = cmd
+        if collector_backend != "dataarm" or not cmd:
+            with STATE_LOCK:
+                STATE["last_error"] = "collect_not_configured"
+            return jsonify({"ok": False, "error": "collect_not_configured"}), 400
+        workdir = CONFIG.get("dataarm_workdir") or CONFIG.get("collect_workdir") or None
+        if workdir and not Path(workdir).exists():
+            with STATE_LOCK:
+                STATE["last_error"] = "collect_workdir_missing"
+            return (
+                jsonify({"ok": False, "error": "collect_workdir_missing", "path": workdir}),
+                400,
+            )
+        session_log = meta_dir / "logs" / "session_gc.log"
+        ok, err = SESSION_RUNNER.start(
+            cmd,
+            workdir,
+            session_log,
+            extra_env=env_overrides,
+        )
+        if not ok:
+            with STATE_LOCK:
+                STATE["last_error"] = "gc_session_start_failed"
+            return jsonify({"ok": False, "error": "gc_session_start_failed", "detail": err}), 500
+        gc_started = True
+        add_log_line("[info] dataarm_session_gc_started")
+
+    return jsonify(
+        {
+            "ok": True,
+            "session": session,
+            "next_episode": next_episode,
+            "gc_started": gc_started,
+            "backend": "dataarm" if _is_dataarm_backend() else _current_collector_backend(),
+            "cmd": gc_cmd if gc_started else None,
+        }
+    )
+
+
+@app.route("/api/dataarm/params", methods=["GET", "POST"])
+def api_dataarm_params():
+    with STATE_LOCK:
+        session = STATE.get("session")
+
+    if request.method == "GET":
+        session_params = {}
+        if isinstance(session, dict):
+            session_params = session.get("collector_params") or {}
+            if not isinstance(session_params, dict):
+                session_params = {}
+        return jsonify(
+            {
+                "ok": True,
+                "backend": _current_collector_backend(),
+                "session_params": session_params,
+                "defaults": {
+                    "run_module": CONFIG.get("dataarm_run_module"),
+                    "python_bin": CONFIG.get("dataarm_python_bin"),
+                    "config_path": CONFIG.get("dataarm_config_path"),
+                    "api_mode": CONFIG.get("dataarm_api_mode"),
+                    "arms": CONFIG.get("dataarm_arms"),
+                    "mode": CONFIG.get("dataarm_mode"),
+                    "headless": CONFIG.get("dataarm_headless"),
+                    "record": CONFIG.get("dataarm_record"),
+                    "duration": CONFIG.get("dataarm_duration"),
+                    "mid_fix_template": CONFIG.get("dataarm_mid_fix_template"),
+                    "extra_args": CONFIG.get("dataarm_extra_args"),
+                    "env": CONFIG.get("dataarm_env"),
+                },
+            }
+        )
+
+    payload = request.get_json(silent=True) or {}
+    params = payload.get("collector_params")
+    if not isinstance(params, dict):
+        return jsonify({"ok": False, "error": "invalid_collector_params"}), 400
+    if not isinstance(session, dict):
+        return jsonify({"ok": False, "error": "no_session"}), 400
+    with STATE_LOCK:
+        STATE["session"]["collector_params"] = dict(params)
+        updated = dict(STATE["session"]["collector_params"])
+    return jsonify({"ok": True, "collector_params": updated})
+
+
+@app.route("/api/dataarm/command_preview", methods=["POST"])
+def api_dataarm_command_preview():
+    payload = request.get_json(silent=True) or {}
+    params = payload.get("collector_params") or {}
+    if params and not isinstance(params, dict):
+        return jsonify({"ok": False, "error": "invalid_collector_params"}), 400
+    with STATE_LOCK:
+        session = STATE.get("session")
+        episode_idx = int(STATE.get("next_episode") or 0)
+    if not isinstance(session, dict):
+        return jsonify({"ok": False, "error": "no_session"}), 400
+    dataset_dir = Path(session.get("dataset_dir") or "")
+    if not dataset_dir:
+        return jsonify({"ok": False, "error": "invalid_session_dataset"}), 400
+    cmd, env_overrides, backend = build_collect_command(
+        dataset_dir.parent,
+        session.get("task_id") or "",
+        episode_idx,
+        session=session,
+        collector_params=params if isinstance(params, dict) else {},
+    )
+    if backend != "dataarm":
+        return jsonify({"ok": False, "error": "backend_not_dataarm", "backend": backend}), 400
+    workdir = CONFIG.get("dataarm_workdir") or CONFIG.get("collect_workdir") or ""
+    return jsonify(
+        {
+            "ok": True,
+            "backend": backend,
+            "episode_idx": episode_idx,
+            "cmd": cmd,
+            "env_overrides": env_overrides,
+            "workdir": workdir,
+        }
+    )
 
 
 @app.route("/api/episode/start", methods=["POST"])
 def api_episode_start():
+    payload = request.get_json(silent=True) or {}
     with STATE_LOCK:
         session = STATE["session"]
         running = STATE["running"]
@@ -1817,15 +2266,77 @@ def api_episode_start():
             add_log_line("[info] topic_check_skipped")
     dataset_dir = Path(session["dataset_dir"])
     dataset_root = dataset_dir.parent
-    cmd = build_collect_command(
-        dataset_root, session["task_id"], next_episode
+    session_params = session.get("collector_params") or {}
+    if not isinstance(session_params, dict):
+        session_params = {}
+    request_params = payload.get("collector_params") or {}
+    if not isinstance(request_params, dict):
+        request_params = {}
+    collector_params = dict(session_params)
+    collector_params.update(request_params)
+
+    if _is_dataarm_backend():
+        if not SESSION_RUNNER.is_running():
+            add_log_line("[error] gc_session_not_running")
+            return jsonify({"ok": False, "error": "gc_session_not_running"}), 409
+        start_sig = getattr(signal, "SIGUSR1", None)
+        if start_sig is None:
+            add_log_line("[error] start_record_signal_unsupported")
+            return jsonify({"ok": False, "error": "start_record_signal_unsupported"}), 500
+        if not SESSION_RUNNER.send_signal(start_sig):
+            add_log_line("[error] failed_to_signal_start_record")
+            return jsonify({"ok": False, "error": "failed_to_signal_start_record"}), 500
+        dataset_dir = Path(session["dataset_dir"])
+        meta_dir = dataset_dir / ".meta"
+        with STATE_LOCK:
+            STATE["running"] = True
+            STATE["current_episode"] = next_episode
+            STATE["last_exit"] = None
+            STATE["last_error"] = None
+        append_event(
+            meta_dir,
+            {"episode": next_episode, "event": "start", "timestamp": now_iso()},
+        )
+        append_episode_log(
+            {
+                "event": "start",
+                "timestamp": now_iso(),
+                "interface_id": session.get("interface_id"),
+                "task_id": session.get("task_id"),
+                "user_id": session.get("user_id"),
+                "episode_id": next_episode,
+                "storage_path": str(dataset_dir),
+                "storage_name": f"episode_{next_episode}",
+            }
+        )
+        with STATE_LOCK:
+            STATE["next_episode"] = next_episode + 1
+        add_log_line(f"[info] start_record_signal_sent episode={next_episode}")
+        return jsonify(
+            {
+                "ok": True,
+                "episode": next_episode,
+                "cmd": None,
+                "backend": "dataarm",
+                "collector_params": collector_params,
+                "control": "signal_start_record",
+            }
+        )
+
+    dataset_dir = Path(session["dataset_dir"])
+    dataset_root = dataset_dir.parent
+    cmd, env_overrides, collector_backend = build_collect_command(
+        dataset_root, session["task_id"], next_episode, session=session, collector_params=collector_params
     )
     if not cmd:
         add_log_line("[error] collect_not_configured")
         return jsonify({"ok": False, "error": "collect_not_configured"}), 400
     meta_dir = dataset_dir / ".meta"
     log_path = meta_dir / "logs" / f"episode_{next_episode}.log"
-    workdir = CONFIG.get("collect_workdir") or None
+    if collector_backend == "dataarm":
+        workdir = CONFIG.get("dataarm_workdir") or CONFIG.get("collect_workdir") or None
+    else:
+        workdir = CONFIG.get("collect_workdir") or None
     if workdir and not Path(workdir).exists():
         add_log_line(f"[error] collect_workdir_missing: {workdir}")
         return (
@@ -1855,7 +2366,15 @@ def api_episode_start():
         }
     )
     try:
-        RUNNER.start(cmd, workdir, log_path, meta_dir, dataset_dir, next_episode)
+        RUNNER.start(
+            cmd,
+            workdir,
+            log_path,
+            meta_dir,
+            dataset_dir,
+            next_episode,
+            extra_env=env_overrides,
+        )
     except FileNotFoundError as exc:
         add_log_line(f"[error] collect_launch_failed: {exc}")
         with STATE_LOCK:
@@ -1880,7 +2399,15 @@ def api_episode_start():
         )
     with STATE_LOCK:
         STATE["next_episode"] = next_episode + 1
-    return jsonify({"ok": True, "episode": next_episode, "cmd": cmd})
+    return jsonify(
+        {
+            "ok": True,
+            "episode": next_episode,
+            "cmd": cmd,
+            "backend": collector_backend,
+            "collector_params": collector_params,
+        }
+    )
 
 
 @app.route("/api/episode/stop", methods=["POST"])
@@ -1900,6 +2427,70 @@ def api_episode_stop():
                 "episode_id": current_episode,
             }
         )
+    if _is_dataarm_backend():
+        if not session:
+            return jsonify({"ok": False, "error": "no_session"}), 400
+        stop_sig = getattr(signal, "SIGUSR2", None)
+        if stop_sig is None:
+            return jsonify({"ok": False, "error": "stop_record_signal_unsupported"}), 500
+        if not SESSION_RUNNER.is_running():
+            state_reset = False
+            with STATE_LOCK:
+                if STATE["running"] or STATE["current_episode"] is not None:
+                    STATE["running"] = False
+                    STATE["current_episode"] = None
+                    STATE["last_error"] = "gc_session_not_running"
+                    state_reset = True
+            if state_reset:
+                add_log_line("[warn] gc session missing during stop; state reset")
+                return jsonify({"ok": True, "note": "state_reset"})
+            return jsonify({"ok": False, "error": "gc_session_not_running"}), 409
+        if not SESSION_RUNNER.send_signal(stop_sig):
+            return jsonify({"ok": False, "error": "failed_to_signal_stop_record"}), 500
+
+        dataset_dir = Path(session.get("dataset_dir") or "")
+        episodes = scan_episode_indices(dataset_dir) if dataset_dir else []
+        deadline_s = time.time() + 3.0
+        while time.time() < deadline_s:
+            time.sleep(0.15)
+            new_episodes = scan_episode_indices(dataset_dir) if dataset_dir else []
+            if len(new_episodes) != len(episodes):
+                episodes = new_episodes
+                break
+            episodes = new_episodes
+
+        with STATE_LOCK:
+            STATE["running"] = False
+            STATE["current_episode"] = None
+            STATE["last_exit"] = 0
+            STATE["last_error"] = None
+            STATE["episodes"] = episodes
+            if episodes:
+                STATE["next_episode"] = max(episodes) + 1
+        if current_episode is not None and dataset_dir:
+            append_event(
+                dataset_dir / ".meta",
+                {
+                    "episode": current_episode,
+                    "event": "end",
+                    "exit_code": 0,
+                    "timestamp": now_iso(),
+                },
+            )
+            append_episode_log(
+                {
+                    "event": "end",
+                    "timestamp": now_iso(),
+                    "interface_id": session.get("interface_id"),
+                    "task_id": session.get("task_id"),
+                    "user_id": session.get("user_id"),
+                    "episode_id": current_episode,
+                    "exit_code": 0,
+                }
+            )
+        add_log_line("[info] stop_record_signal_sent")
+        return jsonify({"ok": True, "note": "signal_sent"})
+
     stopped = RUNNER.stop()
     if not stopped:
         state_reset = False
@@ -2003,6 +2594,10 @@ def api_replay_prepare():
 def cleanup_processes():
     try:
         RUNNER.stop()
+    except Exception:
+        pass
+    try:
+        SESSION_RUNNER.stop()
     except Exception:
         pass
     try:

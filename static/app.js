@@ -405,12 +405,16 @@ startSessionBtn.addEventListener("click", async () => {
     return;
   }
   try {
-    await apiRequest("/api/session/start", {
+    const data = await apiRequest("/api/session/start", {
       method: "POST",
       body: JSON.stringify({ interface_id: interfaceId, user_id: userId, task_id: taskId }),
     });
     await refreshStatus();
-    episodeMsgEl.textContent = "Session started.";
+    if (data && data.gc_started) {
+      episodeMsgEl.textContent = "Session started. GC is running.";
+    } else {
+      episodeMsgEl.textContent = "Session started.";
+    }
   } catch (err) {
     episodeMsgEl.textContent = `Session error: ${err.message}`;
   }
