@@ -166,6 +166,10 @@ h1 {
   grid-column: 1 / -1;
 }
 
+.replay-card {
+  grid-column: 1 / -1;
+}
+
 .card h2 {
   margin: 0 0 6px;
   font-size: 1.2rem;
@@ -205,6 +209,10 @@ input {
   padding: 12px 14px;
   font-family: var(--sans);
   font-size: 1rem;
+}
+
+input[type="range"] {
+  padding: 0;
 }
 
 select {
@@ -306,11 +314,42 @@ pre {
   font-size: 0.85rem;
 }
 
+.replay-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.replay-view {
+  background: rgba(12, 15, 14, 0.06);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.replay-view-title {
+  font-size: 0.75rem;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.replay-view img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  border-radius: 8px;
+  background: #0e1311;
+}
+
 @media (max-width: 700px) {
   .status-card {
     width: 100%;
   }
   .grid {
+    grid-template-columns: 1fr;
+  }
+  .replay-grid {
     grid-template-columns: 1fr;
   }
 }

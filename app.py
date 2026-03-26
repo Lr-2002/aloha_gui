@@ -10,6 +10,7 @@ import signal
 import shutil
 import shlex
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -440,8 +441,18 @@ def load_config():
         "dataarm_record": True,
         "dataarm_duration": 0,
         "dataarm_mid_fix_template": "{user_id}/{task_id}",
+        "dataarm_locked_joints": "",
         "dataarm_extra_args": [],
         "dataarm_env": {},
+        "dataarm_auto_stop_on_fault": True,
+        "dataarm_auto_stop_blink_red_seconds": 5.0,
+        "dataarm_auto_stop_blink_period_seconds": 0.5,
+        "dataarm_auto_stop_trigger_patterns": [
+            "Deploy fail-fast triggered:",
+            "WORK mode requirement failed:",
+            "Robot initialization failed",
+            "Failed to send command: \\(5, 'Input/output error'\\)",
+        ],
         "tasks_csv_autoload": True,
         "tasks_csv_path": "EXAMPLE.CSV",
         "tasks_csv_mode": "replace",
@@ -597,6 +608,29 @@ STATE = {
     "gc_session_pid": None,
 }
 
+AUTO_STOP_LOCK = threading.Lock()
+AUTO_STOP_ACTIVE = False
+
+REPLAY_CACHE_LOCK = threading.Lock()
+REPLAY_CACHE = {
+    "cache_key": None,
+    "payload": None,
+}
+REPLAY_CAMERA_PRIORITY = [
+    "cam_left",
+    "cam_right",
+    "cam_top",
+    "left",
+    "right",
+    "top",
+    "left_corner",
+    "right_corner",
+    "mid",
+    "middle",
+    "front",
+]
+REPLAY_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+
 
 def apply_config_overrides(overrides):
     if not overrides:
@@ -653,6 +687,98 @@ def add_log_line(line):
 def add_stack_log_line(line):
     with STATE_LOCK:
         STATE["stack_log"].append(line)
+
+
+def _dataarm_fault_reason_from_log_line(line):
+    text = str(line or "").strip()
+    if not text:
+        return None
+    patterns = CONFIG.get("dataarm_auto_stop_trigger_patterns") or []
+    if not isinstance(patterns, list):
+        return None
+    for raw in patterns:
+        token = str(raw or "").strip()
+        if not token:
+            continue
+        try:
+            if re.search(token, text, flags=re.IGNORECASE):
+                return token
+        except re.error:
+            if token.lower() in text.lower():
+                return token
+    return None
+
+
+def _load_robot_state_notifier_cls():
+    try:
+        from dataarm_notifier import RobotStateNotifier  # type: ignore
+        return RobotStateNotifier
+    except Exception:
+        notifier_root = APP_ROOT.parent.parent / "notifier"
+        if notifier_root.exists():
+            notifier_path = str(notifier_root)
+            if notifier_path not in sys.path:
+                sys.path.insert(0, notifier_path)
+            try:
+                from dataarm_notifier import RobotStateNotifier  # type: ignore
+                return RobotStateNotifier
+            except Exception:
+                return None
+    return None
+
+
+def _run_dataarm_fault_lamp_sequence(reason):
+    duration_s = float(CONFIG.get("dataarm_auto_stop_blink_red_seconds", 5.0) or 5.0)
+    period_s = float(CONFIG.get("dataarm_auto_stop_blink_period_seconds", 0.5) or 0.5)
+    if duration_s < 0.0:
+        duration_s = 0.0
+    if period_s <= 0.0:
+        period_s = 0.5
+    half_period_s = max(0.05, period_s / 2.0)
+
+    notifier_cls = _load_robot_state_notifier_cls()
+    if notifier_cls is None:
+        add_log_line("[warn] auto_stop_notifier_unavailable")
+        if duration_s > 0.0:
+            time.sleep(duration_s)
+        return
+
+    notifier = None
+    try:
+        notifier = notifier_cls()
+        lamp = getattr(notifier, "_lamp", None)
+        deadline = time.time() + duration_s
+        on = True
+        while time.time() < deadline:
+            try:
+                if lamp is not None and hasattr(lamp, "set_red"):
+                    lamp.set_red(on=on)
+                else:
+                    if on:
+                        notifier.error()
+                    elif hasattr(notifier, "idle"):
+                        notifier.idle()
+            except Exception:
+                pass
+            on = not on
+            time.sleep(half_period_s)
+        try:
+            if lamp is not None and hasattr(lamp, "set_red"):
+                lamp.set_red(on=True)
+            else:
+                notifier.error()
+        except Exception:
+            pass
+    except Exception as exc:
+        add_log_line(f"[warn] auto_stop_notifier_failed: {exc}")
+        if duration_s > 0.0:
+            time.sleep(duration_s)
+    finally:
+        if notifier is not None:
+            try:
+                notifier.cleanup()
+            except Exception:
+                pass
 
 
 def sanitize_token(value):
@@ -768,16 +894,348 @@ def session_paths(user_id, task_name):
     return dataset_dir, meta_dir, logs_dir
 
 
+def _scan_dataarm_session_dirs(dataset_dir):
+    """Scan DataArm-style trajectory sessions under dataset_dir.
+
+    Layout examples:
+    - <dataset_dir>/trajectory/<session_id>
+    - <dataset_dir>/<mid_fix>/trajectory/<session_id>
+    """
+    root = Path(dataset_dir)
+    if not root.exists():
+        return []
+
+    out = []
+    seen = set()
+    try:
+        trajectory_dirs = sorted([p for p in root.rglob("trajectory") if p.is_dir()])
+    except Exception:
+        return []
+
+    for traj_dir in trajectory_dirs:
+        try:
+            candidates = sorted([p for p in traj_dir.iterdir() if p.is_dir()])
+        except Exception:
+            continue
+        for session_dir in candidates:
+            resolved = str(session_dir.resolve())
+            if resolved in seen:
+                continue
+            # Keep only directories that look like a finished or partial session.
+            if (session_dir / "session_manifest.json").exists():
+                seen.add(resolved)
+                out.append(session_dir)
+                continue
+            if any(session_dir.glob("uts_arm_*.json")):
+                seen.add(resolved)
+                out.append(session_dir)
+                continue
+            if (session_dir / "videos").is_dir():
+                seen.add(resolved)
+                out.append(session_dir)
+                continue
+    return out
+
+
 def scan_episode_indices(dataset_dir):
+    dataset_path = Path(dataset_dir)
     indices = set()
     try:
-        for name in os.listdir(dataset_dir):
+        for name in os.listdir(dataset_path):
             match = re.match(r"episode_(\d+)", name)
             if match:
                 indices.add(int(match.group(1)))
     except FileNotFoundError:
         return []
-    return sorted(indices)
+    if indices:
+        return sorted(indices)
+
+    # DataArm backend saves sessions as timestamp directories under trajectory/,
+    # not as episode_<n>. Use local session count so restart continues with +N.
+    dataarm_sessions = _scan_dataarm_session_dirs(dataset_path)
+    return list(range(len(dataarm_sessions)))
+
+
+def _resolve_episode_dir(session, episode_idx):
+    dataset_dir = Path((session or {}).get("dataset_dir") or "")
+    if not dataset_dir.exists():
+        raise FileNotFoundError("dataset_dir_not_found")
+    classic_dir = dataset_dir / f"episode_{episode_idx}"
+    if classic_dir.is_dir():
+        return classic_dir
+    dataarm_sessions = _scan_dataarm_session_dirs(dataset_dir)
+    if 0 <= episode_idx < len(dataarm_sessions):
+        return dataarm_sessions[episode_idx]
+    raise FileNotFoundError("episode_not_found")
+
+
+def _normalize_timestamp_to_ms(value, unit_hint="ms"):
+    try:
+        numeric = float(value)
+    except Exception:
+        return None
+
+    unit = str(unit_hint or "").strip().lower()
+    if unit in {"ms", "millisecond", "milliseconds"}:
+        return numeric
+    if unit in {"us", "microsecond", "microseconds"}:
+        return numeric / 1000.0
+    if unit in {"ns", "nanosecond", "nanoseconds"}:
+        return numeric / 1_000_000.0
+    if unit in {"s", "sec", "second", "seconds"}:
+        return numeric * 1000.0
+
+    # Heuristic fallback when unit is unknown.
+    if numeric > 1e16:
+        return numeric / 1_000_000.0
+    if numeric > 1e13:
+        return numeric / 1000.0
+    if numeric < 1e11:
+        return numeric * 1000.0
+    return numeric
+
+
+def _timestamp_ms_from_filename(filename):
+    stem = Path(str(filename or "")).stem
+    match = re.search(r"(\d{10,})", stem)
+    if not match:
+        return None
+    return _normalize_timestamp_to_ms(match.group(1), unit_hint="")
+
+
+def _frame_timestamp_ms(frame, timestamp_unit="ms"):
+    if isinstance(frame, dict):
+        for key, unit in (
+            ("timestamp_ms", "ms"),
+            ("timestamp_us", "us"),
+            ("timestamp_ns", "ns"),
+            ("timestamp_s", "s"),
+            ("timestamp", timestamp_unit),
+            ("time", timestamp_unit),
+        ):
+            value = frame.get(key)
+            if value is None:
+                continue
+            parsed = _normalize_timestamp_to_ms(value, unit)
+            if parsed is not None:
+                return parsed
+        filename = frame.get("filename")
+    else:
+        filename = None
+    return _timestamp_ms_from_filename(filename)
+
+
+def _candidate_frame_roots(episode_dir, metadata=None):
+    roots = []
+    if isinstance(metadata, dict):
+        raw_root = metadata.get("frames_root")
+        if raw_root:
+            p = Path(str(raw_root))
+            if not p.is_absolute():
+                p = (episode_dir / p).resolve()
+            roots.append(p)
+    roots.extend([episode_dir / "videos", episode_dir / "frames"])
+    out = []
+    seen = set()
+    for root in roots:
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        if root.exists():
+            out.append(root)
+    return out
+
+
+def _scan_frames_from_directory(camera_dir):
+    frames = []
+    try:
+        files = sorted(p for p in camera_dir.iterdir() if p.is_file() and p.suffix.lower() in REPLAY_IMAGE_SUFFIXES)
+    except Exception:
+        return frames
+    for path in files:
+        ts = _timestamp_ms_from_filename(path.name)
+        if ts is None:
+            continue
+        frames.append({"filename": path.name, "timestamp_ms": int(round(ts))})
+    return frames
+
+
+def _build_replay_payload(session, episode_idx):
+    episode_dir = _resolve_episode_dir(session, episode_idx)
+    metadata = {}
+    meta_path = episode_dir / "camera_metadata.json"
+    if meta_path.exists():
+        try:
+            with meta_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                metadata = data
+        except Exception:
+            metadata = {}
+
+    roots = _candidate_frame_roots(episode_dir, metadata)
+    cameras_meta = metadata.get("cameras") if isinstance(metadata.get("cameras"), dict) else {}
+    timestamp_unit = metadata.get("timestamp_unit", "ms")
+    frames_by_camera = {}
+    camera_base_dirs = {}
+
+    # Preferred camera order from metadata first.
+    ordered_camera_names = []
+    raw_camera_names = metadata.get("camera_names")
+    if isinstance(raw_camera_names, list):
+        for name in raw_camera_names:
+            camera_name = str(name or "").strip()
+            if camera_name and camera_name not in ordered_camera_names:
+                ordered_camera_names.append(camera_name)
+    for name in cameras_meta.keys():
+        if name not in ordered_camera_names:
+            ordered_camera_names.append(name)
+
+    for camera_name in ordered_camera_names:
+        camera_info = cameras_meta.get(camera_name, {})
+        raw_frames = camera_info.get("frames") if isinstance(camera_info, dict) else None
+        parsed_frames = []
+        if isinstance(raw_frames, list):
+            for frame in raw_frames:
+                if not isinstance(frame, dict):
+                    continue
+                filename = Path(str(frame.get("filename") or "")).name
+                if not filename:
+                    continue
+                ts_ms = _frame_timestamp_ms(frame, timestamp_unit=timestamp_unit)
+                if ts_ms is None:
+                    continue
+                parsed_frames.append({"filename": filename, "timestamp_ms": int(round(ts_ms))})
+        parsed_frames.sort(key=lambda item: (item["timestamp_ms"], item["filename"]))
+        if parsed_frames:
+            frames_by_camera[camera_name] = parsed_frames
+
+    # Fallback: scan frame directories when metadata is missing or incomplete.
+    if roots:
+        for root in roots:
+            try:
+                subdirs = sorted(p for p in root.iterdir() if p.is_dir())
+            except Exception:
+                subdirs = []
+            for camera_dir in subdirs:
+                camera_name = camera_dir.name
+                if camera_name in frames_by_camera:
+                    continue
+                scanned = _scan_frames_from_directory(camera_dir)
+                if scanned:
+                    frames_by_camera[camera_name] = scanned
+                    camera_base_dirs[camera_name] = str(camera_dir)
+
+    if not frames_by_camera:
+        raise FileNotFoundError("no_camera_frames")
+
+    # Resolve frame base directory for each camera.
+    for camera_name in frames_by_camera.keys():
+        if camera_name in camera_base_dirs:
+            continue
+        selected_dir = None
+        for root in roots:
+            candidate = root / camera_name
+            if candidate.is_dir():
+                selected_dir = candidate
+                break
+        if selected_dir is None:
+            for root in roots:
+                if root.is_dir():
+                    selected_dir = root
+                    break
+        if selected_dir is None:
+            selected_dir = episode_dir
+        camera_base_dirs[camera_name] = str(selected_dir)
+
+    camera_names = list(frames_by_camera.keys())
+    selected_cameras = []
+    for name in REPLAY_CAMERA_PRIORITY:
+        if name in camera_names and name not in selected_cameras:
+            selected_cameras.append(name)
+    for name in camera_names:
+        if name not in selected_cameras:
+            selected_cameras.append(name)
+    selected_cameras = selected_cameras[:3]
+
+    anchor_camera = metadata.get("anchor_camera")
+    if anchor_camera not in selected_cameras:
+        anchor_camera = selected_cameras[0]
+    anchor_frames = frames_by_camera.get(anchor_camera, [])
+    if not anchor_frames:
+        raise FileNotFoundError("anchor_camera_has_no_frames")
+
+    timeline_ms = [int(item["timestamp_ms"]) for item in anchor_frames]
+
+    def nearest_indices(anchor_timestamps, target_timestamps):
+        if not target_timestamps:
+            return [0 for _ in anchor_timestamps]
+        out = []
+        cursor = 0
+        for ts in anchor_timestamps:
+            while cursor + 1 < len(target_timestamps) and target_timestamps[cursor + 1] <= ts:
+                cursor += 1
+            best = cursor
+            if cursor + 1 < len(target_timestamps):
+                if abs(target_timestamps[cursor + 1] - ts) < abs(target_timestamps[cursor] - ts):
+                    best = cursor + 1
+            out.append(best)
+        return out
+
+    timeline_to_frame = {}
+    for camera_name in selected_cameras:
+        ts_list = [int(item["timestamp_ms"]) for item in frames_by_camera[camera_name]]
+        timeline_to_frame[camera_name] = nearest_indices(timeline_ms, ts_list)
+
+    duration_s = 0.0
+    if len(timeline_ms) >= 2:
+        duration_s = max(0.0, (timeline_ms[-1] - timeline_ms[0]) / 1000.0)
+
+    preview = {
+        "episode": int(episode_idx),
+        "episode_dir": str(episode_dir),
+        "camera_names": selected_cameras,
+        "all_cameras": sorted(camera_names),
+        "anchor_camera": anchor_camera,
+        "frame_count": len(timeline_ms),
+        "duration_s": duration_s,
+        "timeline_ms": timeline_ms,
+        "timeline_to_frame": timeline_to_frame,
+        "camera_frame_counts": {name: len(frames_by_camera[name]) for name in selected_cameras},
+    }
+    return {
+        "preview": preview,
+        "episode_dir": str(episode_dir),
+        "frames_by_camera": frames_by_camera,
+        "camera_base_dirs": camera_base_dirs,
+        "meta_path": str(meta_path) if meta_path.exists() else None,
+        "meta_mtime_ns": meta_path.stat().st_mtime_ns if meta_path.exists() else None,
+    }
+
+
+def _get_replay_payload(session, episode_idx):
+    episode_dir = _resolve_episode_dir(session, episode_idx)
+    meta_path = episode_dir / "camera_metadata.json"
+    cache_key = (
+        str(episode_dir.resolve()),
+        int(episode_idx),
+        meta_path.stat().st_mtime_ns if meta_path.exists() else None,
+    )
+    with REPLAY_CACHE_LOCK:
+        if REPLAY_CACHE.get("cache_key") == cache_key and REPLAY_CACHE.get("payload") is not None:
+            return REPLAY_CACHE["payload"]
+    payload = _build_replay_payload(session, episode_idx)
+    with REPLAY_CACHE_LOCK:
+        REPLAY_CACHE["cache_key"] = cache_key
+        REPLAY_CACHE["payload"] = payload
+    return payload
+
+
+def _clear_replay_cache():
+    with REPLAY_CACHE_LOCK:
+        REPLAY_CACHE["cache_key"] = None
+        REPLAY_CACHE["payload"] = None
 
 
 def write_meta(meta_dir, data):
@@ -859,6 +1317,10 @@ def _build_dataarm_collect_command(dataset_dir, task_name, episode_idx, session=
         or CONFIG.get("dataarm_mode")
         or "teach"
     ).strip()
+    locked_joints = params.get("locked_joints", CONFIG.get("dataarm_locked_joints", ""))
+    if locked_joints is None:
+        locked_joints = ""
+    locked_joints = str(locked_joints).strip()
     headless = _to_bool(
         params.get("headless"),
         _to_bool(CONFIG.get("dataarm_headless"), True),
@@ -908,6 +1370,8 @@ def _build_dataarm_collect_command(dataset_dir, task_name, episode_idx, session=
         cmd.append("--record")
     else:
         cmd.append("--no-record")
+    if locked_joints:
+        cmd.extend(["--locked-joints", locked_joints])
     if mid_fix:
         cmd.extend(["--mid_fix", mid_fix])
 
@@ -1109,6 +1573,9 @@ class DataArmSessionRunner:
                     with STATE_LOCK:
                         STATE["last_log"].append(f"[session] {line}")
                     log_file.write(line + "\n")
+                    reason = _dataarm_fault_reason_from_log_line(line)
+                    if reason:
+                        _request_dataarm_auto_stop(f"log:{reason}")
             proc.wait()
             with STATE_LOCK:
                 STATE["gc_session_running"] = False
@@ -1832,6 +2299,7 @@ def api_status():
         "record": CONFIG.get("dataarm_record"),
         "duration": CONFIG.get("dataarm_duration"),
         "mid_fix_template": CONFIG.get("dataarm_mid_fix_template"),
+        "locked_joints": CONFIG.get("dataarm_locked_joints"),
     }
     data["stack_enabled"] = bool(CONFIG.get("stack_enabled", True))
     data["sudo_ready"] = bool(get_sudo_password())
@@ -2065,6 +2533,7 @@ def api_session_start():
         STATE["last_replay"] = None
         STATE["gc_session_running"] = False
         STATE["gc_session_pid"] = None
+    _clear_replay_cache()
 
     if SESSION_RUNNER.is_running():
         SESSION_RUNNER.stop()
@@ -2124,6 +2593,111 @@ def api_session_start():
     )
 
 
+def _stop_session_internal(*, source="manual", reason=None):
+    with STATE_LOCK:
+        session = STATE.get("session")
+        running = bool(STATE.get("running"))
+        current_episode = STATE.get("current_episode")
+
+    is_dataarm_session = (
+        isinstance(session, dict)
+        and str(session.get("interface_id", "")).strip().lower() == "dataarm"
+    )
+    dataset_dir = Path(session.get("dataset_dir", "")) if isinstance(session, dict) else None
+
+    stopped_recording = False
+    stopped_gc_session = False
+    stopped_episode_runner = False
+
+    if is_dataarm_session and running and current_episode is not None and SESSION_RUNNER.is_running():
+        stop_sig = getattr(signal, "SIGUSR2", None)
+        if stop_sig is not None and SESSION_RUNNER.send_signal(stop_sig):
+            stopped_recording = True
+            deadline_s = time.time() + 3.0
+            while time.time() < deadline_s:
+                time.sleep(0.15)
+                with STATE_LOCK:
+                    if not STATE.get("running"):
+                        break
+
+    if SESSION_RUNNER.is_running():
+        stopped_gc_session = SESSION_RUNNER.stop()
+        if stopped_gc_session:
+            time.sleep(0.1)
+
+    if RUNNER.process is not None and RUNNER.process.poll() is None:
+        stopped_episode_runner = RUNNER.stop()
+        if stopped_episode_runner:
+            time.sleep(0.05)
+
+    episodes = scan_episode_indices(dataset_dir) if dataset_dir else []
+    next_episode = (episodes[-1] + 1) if episodes else len(episodes)
+
+    with STATE_LOCK:
+        STATE["session"] = None
+        STATE["episodes"] = episodes
+        STATE["next_episode"] = next_episode
+        STATE["current_episode"] = None
+        STATE["running"] = False
+        STATE["last_exit"] = None
+        if source == "auto_fault" and reason:
+            STATE["last_error"] = str(reason)
+        else:
+            STATE["last_error"] = None
+        STATE["selected_episode"] = None
+        STATE["last_replay"] = None
+        STATE["gc_session_running"] = False
+        STATE["gc_session_pid"] = None
+    _clear_replay_cache()
+
+    if source == "auto_fault":
+        if reason:
+            add_log_line(f"[error] auto_stop_session reason={reason}")
+        else:
+            add_log_line("[error] auto_stop_session")
+    add_log_line("[info] session_stopped")
+    return {
+        "ok": True,
+        "stopped_recording": stopped_recording,
+        "stopped_gc_session": stopped_gc_session,
+        "stopped_episode_runner": stopped_episode_runner,
+        "had_session": isinstance(session, dict),
+        "source": source,
+        "reason": reason,
+    }
+
+
+def _request_dataarm_auto_stop(reason):
+    if not bool(CONFIG.get("dataarm_auto_stop_on_fault", True)):
+        return False
+
+    global AUTO_STOP_ACTIVE
+    with AUTO_STOP_LOCK:
+        if AUTO_STOP_ACTIVE:
+            return False
+        AUTO_STOP_ACTIVE = True
+
+    def _worker():
+        global AUTO_STOP_ACTIVE
+        try:
+            add_log_line(f"[warn] dataarm_auto_stop_triggered: {reason}")
+            _run_dataarm_fault_lamp_sequence(reason)
+            _stop_session_internal(source="auto_fault", reason=reason)
+        finally:
+            with AUTO_STOP_LOCK:
+                AUTO_STOP_ACTIVE = False
+
+    thread = threading.Thread(target=_worker, daemon=True, name="dataarm-auto-stop")
+    thread.start()
+    return True
+
+
+@app.route("/api/session/stop", methods=["POST"])
+def api_session_stop():
+    result = _stop_session_internal(source="manual", reason=None)
+    return jsonify(result)
+
+
 @app.route("/api/dataarm/params", methods=["GET", "POST"])
 def api_dataarm_params():
     with STATE_LOCK:
@@ -2151,6 +2725,7 @@ def api_dataarm_params():
                     "record": CONFIG.get("dataarm_record"),
                     "duration": CONFIG.get("dataarm_duration"),
                     "mid_fix_template": CONFIG.get("dataarm_mid_fix_template"),
+                    "locked_joints": CONFIG.get("dataarm_locked_joints"),
                     "extra_args": CONFIG.get("dataarm_extra_args"),
                     "env": CONFIG.get("dataarm_env"),
                 },
@@ -2581,7 +3156,7 @@ def api_replay_prepare():
         return jsonify({"ok": False, "error": "no_selected_episode"}), 400
     payload = {
         "dataset_dir": session["dataset_dir"],
-        "task": session["task"],
+        "task": session.get("task") or session.get("task_name") or session.get("task_id"),
         "episode": selected,
         "note": "replay_not_implemented",
         "timestamp": now_iso(),
@@ -2589,6 +3164,98 @@ def api_replay_prepare():
     with STATE_LOCK:
         STATE["last_replay"] = payload
     return jsonify({"ok": True, "replay": payload})
+
+
+@app.route("/api/replay/preview", methods=["POST"])
+def api_replay_preview():
+    with STATE_LOCK:
+        session = STATE["session"]
+        selected = STATE["selected_episode"]
+    if not session:
+        return jsonify({"ok": False, "error": "no_session"}), 400
+
+    body = request.get_json(silent=True) or {}
+    episode_raw = body.get("episode", selected)
+    if episode_raw is None:
+        return jsonify({"ok": False, "error": "no_selected_episode"}), 400
+    try:
+        episode = int(episode_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "invalid_episode"}), 400
+
+    try:
+        payload = _get_replay_payload(session, episode)
+    except FileNotFoundError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"preview_failed: {exc}"}), 500
+
+    with STATE_LOCK:
+        STATE["selected_episode"] = episode
+        STATE["last_replay"] = {
+            "dataset_dir": session["dataset_dir"],
+            "task": session.get("task") or session.get("task_name") or session.get("task_id"),
+            "episode": episode,
+            "note": "replay_preview_ready",
+            "timestamp": now_iso(),
+        }
+    return jsonify({"ok": True, "preview": payload["preview"]})
+
+
+@app.route("/api/replay/frame", methods=["GET"])
+def api_replay_frame():
+    with STATE_LOCK:
+        session = STATE["session"]
+        selected = STATE["selected_episode"]
+    if not session:
+        return jsonify({"ok": False, "error": "no_session"}), 400
+
+    episode_raw = request.args.get("episode", selected)
+    camera = str(request.args.get("camera") or "").strip()
+    frame_idx_raw = request.args.get("frame_idx")
+    if episode_raw is None or not camera or frame_idx_raw is None:
+        return jsonify({"ok": False, "error": "missing_query"}), 400
+
+    try:
+        episode = int(episode_raw)
+        frame_idx = int(frame_idx_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "invalid_query"}), 400
+    if frame_idx < 0:
+        return jsonify({"ok": False, "error": "invalid_frame_idx"}), 400
+
+    try:
+        payload = _get_replay_payload(session, episode)
+    except FileNotFoundError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"frame_lookup_failed: {exc}"}), 500
+
+    frames = payload["frames_by_camera"].get(camera)
+    if not frames:
+        return jsonify({"ok": False, "error": "camera_not_found"}), 404
+    if frame_idx >= len(frames):
+        return jsonify({"ok": False, "error": "frame_out_of_range"}), 400
+
+    filename = frames[frame_idx]["filename"]
+    base_dir = Path(payload["camera_base_dirs"].get(camera, payload["episode_dir"]))
+    candidate = base_dir / filename
+    if not candidate.is_file():
+        # Fallback for non-camera-subdir layouts.
+        episode_dir = Path(payload["episode_dir"])
+        for root in _candidate_frame_roots(episode_dir):
+            p1 = root / camera / filename
+            if p1.is_file():
+                candidate = p1
+                break
+            p2 = root / filename
+            if p2.is_file():
+                candidate = p2
+                break
+    if not candidate.is_file():
+        return jsonify({"ok": False, "error": "frame_file_not_found"}), 404
+
+    return send_from_directory(str(candidate.parent), candidate.name, conditional=True)
 
 
 def cleanup_processes():

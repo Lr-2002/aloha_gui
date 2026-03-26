@@ -60,6 +60,16 @@
             <label for="task-id">Task</label>
             <select id="task-id"></select>
           </div>
+          <div class="field" id="dataarm-locked-joints-field">
+            <label for="dataarm-locked-joints">Locked Joints Profile (DataArm)</label>
+            <select id="dataarm-locked-joints">
+              <option value="">None</option>
+              <option value="j2">j2</option>
+              <option value="j4">j4</option>
+              <option value="j5">j5</option>
+              <option value="j7+j8">j7+j8</option>
+            </select>
+          </div>
           <div class="inline-form">
             <input id="task-name" type="text" placeholder="Task name" />
             <input id="task-desc" type="text" placeholder="Task description" />
@@ -68,6 +78,7 @@
           </div>
           <p class="hint" id="task-details">Select a task to see details.</p>
           <button id="start-session" class="primary">Start Session</button>
+          <button id="stop-session" class="ghost">Stop Session</button>
           <p class="hint" id="session-path">Session path: -</p>
         </section>
 
@@ -140,14 +151,47 @@
           <p class="hint" id="random-msg">No episode selected.</p>
         </section>
 
-        <section class="card">
-          <h2>Replay Stub</h2>
-          <p class="muted">Replay execution is not implemented yet. This only prepares the payload.</p>
+        <section class="card replay-card">
+          <h2>Replay</h2>
+          <p class="muted">Three synchronized camera views on one shared timeline.</p>
           <div class="status-row">
             <span class="label">Selected Episode</span>
             <span class="value" id="selected-episode">-</span>
           </div>
-          <button id="prepare-replay" class="ghost">Prepare Replay</button>
+          <div class="button-row">
+            <button id="prepare-replay" class="ghost">Prepare Replay</button>
+            <button id="load-replay-preview" class="primary">Load 3-View Preview</button>
+            <button id="replay-play-toggle" class="ghost">Play</button>
+          </div>
+          <div class="status-row">
+            <span class="label">Timeline</span>
+            <span class="value mono" id="replay-time-label">0.00s / 0.00s</span>
+          </div>
+          <input id="replay-timeline" type="range" min="0" max="0" value="0" step="1" />
+          <div class="field">
+            <label for="replay-speed">Replay Speed</label>
+            <select id="replay-speed">
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1.0x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2.0x</option>
+            </select>
+          </div>
+          <div class="replay-grid">
+            <div class="replay-view">
+              <div class="replay-view-title mono" id="replay-cam-label-0">-</div>
+              <img id="replay-cam-img-0" alt="camera view 1" />
+            </div>
+            <div class="replay-view">
+              <div class="replay-view-title mono" id="replay-cam-label-1">-</div>
+              <img id="replay-cam-img-1" alt="camera view 2" />
+            </div>
+            <div class="replay-view">
+              <div class="replay-view-title mono" id="replay-cam-label-2">-</div>
+              <img id="replay-cam-img-2" alt="camera view 3" />
+            </div>
+          </div>
           <p class="hint" id="replay-msg">No replay payload.</p>
         </section>
 

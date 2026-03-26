@@ -14,6 +14,18 @@
   "dataarm_record": true,
   "dataarm_duration": 0,
   "dataarm_mid_fix_template": "{user_id}/{task_id}",
-  "dataarm_extra_args": [],
+  "dataarm_locked_joints": "",
+  "dataarm_auto_stop_on_fault": true,
+  "dataarm_auto_stop_blink_red_seconds": 5.0,
+  "dataarm_auto_stop_blink_period_seconds": 0.5,
+  "dataarm_auto_stop_trigger_patterns": [
+    "Deploy fail-fast triggered:",
+    "WORK mode requirement failed:",
+    "Robot initialization failed",
+    "Failed to send command: \\(5, 'Input/output error'\\)"
+  ],
+  "dataarm_extra_args": [
+    "--no-arm-telemetry"
+  ],
   "dataarm_env": {}
 }
